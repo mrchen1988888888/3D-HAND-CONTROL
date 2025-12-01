@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>2025 新年粒子系统</title>
+    <title>2025 新年粒子(极速版)</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1a0505; font-family: 'Segoe UI', sans-serif; }
         
-        /* 背景微调：新年红黑渐变 */
         body { background: radial-gradient(circle, #2b0a0a 0%, #000000 100%); }
 
         #input-video { 
@@ -16,35 +15,40 @@
             transform: scaleX(-1);
         }
         
-        /* 顶部大标题 */
         #title-display {
             position: absolute; top: 30px; left: 50%; transform: translateX(-50%);
             font-size: 24px; font-weight: bold; color: #ffd700;
             text-shadow: 0 0 20px rgba(255, 215, 0, 0.5);
             pointer-events: none; z-index: 90;
             text-align: center; letter-spacing: 2px;
+            width: 100%;
         }
 
-        /* 底部提示 */
         #guide-panel {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: rgba(40, 0, 0, 0.8); border: 1px solid #ff4444;
+            background: rgba(40, 0, 0, 0.6); border: 1px solid #ff4444;
             padding: 10px 20px; border-radius: 30px;
-            color: #ffcccc; font-size: 14px;
+            color: #ffcccc; font-size: 13px;
             pointer-events: none; z-index: 90; text-align: center;
+            white-space: nowrap;
         }
 
-        /* 状态指示 HUD */
+        /* 状态指示改成左上角小字，不遮挡视线 */
         #hud-status {
             position: absolute; top: 80px; left: 20px;
-            background: rgba(0, 0, 0, 0.6); border-left: 3px solid #ffd700;
-            padding: 8px 15px; color: #ffd700; font-family: monospace;
-            border-radius: 0 5px 5px 0; z-index: 50;
+            font-size: 12px; color: #888;
+            font-family: monospace;
+            z-index: 50;
+            background: rgba(0,0,0,0.5);
+            padding: 5px 10px;
+            border-radius: 4px;
         }
 
+        /* 加载层样式优化 */
         .loading-mask {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200;
+            transition: opacity 0.5s;
         }
         .spinner { width: 40px; height: 40px; border: 4px solid #333; border-top: 4px solid #ffd700; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
@@ -56,23 +60,35 @@
     
     <div id="loading" class="loading-mask">
         <div class="spinner"></div>
-        <div style="color:#ffd700; font-size: 14px;">正在构建 2025 数字宇宙...</div>
+        <div id="loading-text" style="color:#ffd700; font-size: 14px;">资源加载中...</div>
     </div>
     
     <div id="title-display">HAPPY NEW YEAR 2025</div>
-    <div id="hud-status">SYSTEM: READY</div>
+    <div id="hud-status">AI 系统: 初始化中...</div>
     
     <div id="guide-panel">
-        🖱️ 点击数字: 单独展示 | 👌 OK手势: 全局复位
+        🖱️ 点击数字互动 | 👌 OK手势复位
     </div>
 
-    <!-- 使用国内源 -->
+    <!-- 依然使用国内源 -->
     <script src="https://npm.elemecdn.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://npm.elemecdn.com/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://npm.elemecdn.com/@mediapipe/control_utils/control_utils.js"></script>
     <script src="https://npm.elemecdn.com/@mediapipe/hands/hands.js"></script>
 
     <script>
+        // --- 错误处理与加载控制 ---
+        const loadingMask = document.getElementById('loading');
+        const loadText = document.getElementById('loading-text');
+        
+        // 强制 3秒后无论如何都隐藏加载层，保证用户能看到画面
+        setTimeout(() => {
+            if(loadingMask.style.display !== 'none') {
+                loadingMask.style.opacity = '0';
+                setTimeout(()=> loadingMask.style.display = 'none', 500);
+            }
+        }, 2000);
+
         // --- 1. Three.js 初始化 ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x1a0505, 0.002);
@@ -85,263 +101,170 @@
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // 光照 (为了让金色粒子更有质感)
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
 
-        // --- 2. 数字粒子生成器 ---
-        // 我们不加载字体文件，而是用 Canvas 画出数字然后提取像素坐标
-        // 这样速度最快，兼容性最好
-
-        const digitMeshes = []; // 存储 4 个数字的 Mesh
+        // --- 2. 数字粒子生成 (Canvas法) ---
+        const digitMeshes = [];
         const digitData = [
-            { char: "2", x: -9 },
-            { char: "0", x: -3 },
-            { char: "2", x: 3 },
-            { char: "5", x: 9 }
+            { char: "2", x: -9 }, { char: "0", x: -3 }, { char: "2", x: 3 }, { char: "5", x: 9 }
         ];
 
-        // 目标位置状态管理
         const targets = {
-            default: [], // 默认位置 [posVector, posVector, ...]
-            center: new THREE.Vector3(0, 0, 10) // 选中时的中心位置
+            center: new THREE.Vector3(0, 0, 10)
         };
-
-        // 当前状态
-        let activeDigitIndex = -1; // -1 表示显示所有，0-3 表示显示特定数字
+        let activeDigitIndex = -1;
 
         function createTextParticles(text, offsetX) {
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
-            canvas.width = 200;
-            canvas.height = 200;
-            
-            // 绘制文字
+            canvas.width = 200; canvas.height = 200;
             ctx.font = 'bold 160px Arial';
             ctx.fillStyle = 'white';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(text, 100, 100);
 
             const imgData = ctx.getImageData(0, 0, 200, 200);
             const positions = [];
-            
-            // 扫描像素
-            for (let y = 0; y < 200; y += 4) { // 步长决定粒子密度
+            for (let y = 0; y < 200; y += 4) {
                 for (let x = 0; x < 200; x += 4) {
-                    const index = (y * 200 + x) * 4;
-                    if (imgData.data[index] > 128) { // 如果有像素
-                        // 转换坐标: Canvas(0,0在左上) -> Three(0,0在中心)
-                        const pX = (x - 100) * 0.1;
-                        const pY = (100 - y) * 0.1;
-                        // 增加一点厚度 Z
-                        const pZ = (Math.random() - 0.5) * 2;
-                        positions.push(pX, pY, pZ);
+                    if (imgData.data[(y * 200 + x) * 4] > 128) {
+                        positions.push((x - 100) * 0.1, (100 - y) * 0.1, (Math.random() - 0.5) * 2);
                     }
                 }
             }
-
             const geometry = new THREE.BufferGeometry();
             geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-            
-            // 材质：金色粒子
-            const material = new THREE.PointsMaterial({
-                color: 0xffd700, // Gold
-                size: 0.25,
-                transparent: true,
-                opacity: 0.9,
-                blending: THREE.AdditiveBlending
-            });
-
+            const material = new THREE.PointsMaterial({ color: 0xffd700, size: 0.25, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
             const mesh = new THREE.Points(geometry, material);
-            // 设置初始位置
             mesh.position.set(offsetX, 0, 0);
-            
-            // 存储默认位置以便复位
-            mesh.userData = {
-                originalPos: new THREE.Vector3(offsetX, 0, 0),
-                originalScale: 1.0,
-                velocity: new THREE.Vector3(0,0,0) // 用于动画插值
-            };
-            
+            mesh.userData = { originalPos: new THREE.Vector3(offsetX, 0, 0) };
             scene.add(mesh);
             return mesh;
         }
 
-        // 生成 "2025"
-        digitData.forEach((d, i) => {
-            const mesh = createTextParticles(d.char, d.x);
-            digitMeshes.push(mesh);
-            targets.default.push(mesh.userData.originalPos);
-        });
+        // 生成数字
+        digitData.forEach(d => digitMeshes.push(createTextParticles(d.char, d.x)));
 
-        // --- 3. 鼠标/点击 交互逻辑 ---
+        // 手动隐藏加载层 (3D创建完毕)
+        loadText.innerText = "启动视觉系统...";
+        setTimeout(() => {
+             loadingMask.style.opacity = '0';
+             setTimeout(()=> loadingMask.style.display = 'none', 500);
+        }, 500);
+
+        // --- 3. 交互逻辑 ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        
-        // 增加 Raycaster 的阈值，让粒子更容易被点中
         raycaster.params.Points.threshold = 1.0;
 
-        window.addEventListener('click', onMouseClick);
-        // 兼容手机触摸
-        window.addEventListener('touchstart', (e) => {
-            e.preventDefault(); // 防止双击缩放
-            mouse.x = (e.touches[0].clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(e.touches[0].clientY / window.innerHeight) * 2 + 1;
-            checkIntersection();
-        }, {passive: false});
-
-        function onMouseClick(event) {
-            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-            checkIntersection();
-        }
-
-        function checkIntersection() {
-            // 如果已经在展示单个数字，点击空白处不一定复位，这里设定为点击才切换
+        function handleInput(x, y) {
+            mouse.x = (x / window.innerWidth) * 2 - 1;
+            mouse.y = -(y / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
             const intersects = raycaster.intersectObjects(digitMeshes);
-
             if (intersects.length > 0) {
-                // 找到了被点击的数字对象
-                const selectedObject = intersects[0].object;
-                const index = digitMeshes.indexOf(selectedObject);
-                
+                const index = digitMeshes.indexOf(intersects[0].object);
                 if (index !== -1 && index !== activeDigitIndex) {
-                    focusOnDigit(index);
+                    activeDigitIndex = index;
+                    document.getElementById('hud-status').innerText = `选中数字: ${digitData[index].char}`;
+                    document.getElementById('hud-status').style.color = "#ffdd00";
                 }
             } else {
-                // 点击空白处，暂不处理，保留手势复位功能
-                // 如果你想点击空白处复位，可以解开下面注释
-                // resetAll();
+                 // 点击空白处复位 (可选)
+                 // resetAll();
             }
         }
 
-        function focusOnDigit(index) {
-            activeDigitIndex = index;
-            document.getElementById('hud-status').innerText = `SELECTED: ${digitData[index].char}`;
-            document.getElementById('hud-status').style.color = "#ff4444";
-        }
+        window.addEventListener('click', e => handleInput(e.clientX, e.clientY));
+        window.addEventListener('touchstart', e => {
+            e.preventDefault();
+            handleInput(e.touches[0].clientX, e.touches[0].clientY);
+        }, {passive: false});
 
         function resetAll() {
-            if (activeDigitIndex === -1) return; // 已经是复位状态
+            if (activeDigitIndex === -1) return;
             activeDigitIndex = -1;
-            document.getElementById('hud-status').innerText = "SYSTEM: READY";
-            document.getElementById('hud-status').style.color = "#ffd700";
+            document.getElementById('hud-status').innerText = "系统就绪 (等待手势)";
+            document.getElementById('hud-status').style.color = "#888";
         }
 
-        // --- 4. 动画循环 ---
+        // --- 4. 动画 ---
         function animate() {
             requestAnimationFrame(animate);
-
             digitMeshes.forEach((mesh, i) => {
-                // 粒子自身旋转特效
                 mesh.rotation.y += 0.005;
-                mesh.rotation.x = Math.sin(Date.now() * 0.001 + i) * 0.1;
-
-                // 目标状态计算
                 let targetPos, targetScale, targetOpacity;
-
+                
                 if (activeDigitIndex === -1) {
-                    // --- 默认状态：显示所有 ---
                     targetPos = mesh.userData.originalPos;
-                    targetScale = 1.0;
-                    targetOpacity = 0.9;
+                    targetScale = 1.0; targetOpacity = 0.9;
                 } else {
-                    // --- 选中状态 ---
                     if (i === activeDigitIndex) {
-                        // 选中的数字：飞到中间，变大
                         targetPos = targets.center;
-                        targetScale = 2.0;
-                        targetOpacity = 1.0;
+                        targetScale = 2.0; targetOpacity = 1.0;
                     } else {
-                        // 其他数字：飞散/隐藏
-                        // 我们可以让它们向四周飞走，或者直接原地消失
-                        targetPos = mesh.userData.originalPos.clone().multiplyScalar(3); // 向外飞
-                        targetScale = 0.1;
-                        targetOpacity = 0.0;
+                        // 没被选中的，向两边散开
+                        targetPos = mesh.userData.originalPos.clone().multiplyScalar(5); 
+                        targetScale = 0.1; targetOpacity = 0.0;
                     }
                 }
-
-                // 简单的 Lerp 插值动画
                 mesh.position.lerp(targetPos, 0.08);
-                // 缩放模拟 (Points 没有 scale 属性，我们通过修改位置间距模拟，或者简单修改材质 size)
-                // 这里我们直接修改对象 scale
                 const s = mesh.scale.x + (targetScale - mesh.scale.x) * 0.08;
-                mesh.scale.set(s, s, s);
-                
+                mesh.scale.set(s,s,s);
                 mesh.material.opacity += (targetOpacity - mesh.material.opacity) * 0.1;
-                mesh.material.size = (targetScale > 1.5 ? 0.35 : 0.25); // 放大时粒子也变大点
+                mesh.material.size = (targetScale > 1.5 ? 0.35 : 0.25);
             });
-
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 5. 手势识别 (OK复位) ---
+        // --- 5. AI 手势 (后台静默加载) ---
         const videoElement = document.getElementById('input-video');
-        const loadingDiv = document.getElementById('loading');
+        const hudStatus = document.getElementById('hud-status');
         let lastOkTime = 0;
 
         const hands = new Hands({locateFile: (file) => `https://npm.elemecdn.com/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-
-        function isOK(lm) {
-            // 拇指(4)和食指(8)尖端距离很近
-            const pinchDist = Math.hypot(lm[4].x - lm[8].x, lm[4].y - lm[8].y);
-            const handSize = Math.hypot(lm[0].x - lm[9].x, lm[0].y - lm[9].y);
-            const isPinch = (pinchDist / handSize) < 0.25;
-
-            // 其他三指必须是伸直的 (指尖 y < 指根 y) 
-            // 注意：MediaPipe y轴向下，所以数值小是上方
-            // 为了简化，我们只检测中指(12)、无名指(16)、小指(20)是否高于拇指跟(2)
-            const othersUp = lm[12].y < lm[2].y && lm[16].y < lm[2].y && lm[20].y < lm[2].y;
-            
-            return isPinch && othersUp;
-        }
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 
         hands.onResults((results) => {
-            if(loadingDiv.style.display !== 'none') loadingDiv.style.display = 'none';
+            // 只要手势开始工作，更新状态
+            if (hudStatus.innerText.includes("初始化")) hudStatus.innerText = "AI 视觉已启动";
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
+                // OK手势检测
+                const pinch = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y) / Math.hypot(lm[0].x-lm[9].x, lm[0].y-lm[9].y) < 0.25;
+                const threeUp = lm[12].y < lm[2].y && lm[16].y < lm[2].y && lm[20].y < lm[2].y;
                 
-                // 检测 OK 手势
-                if (isOK(lm)) {
+                if (pinch && threeUp) {
                     const now = Date.now();
-                    // 防抖 1秒
                     if (now - lastOkTime > 1000) {
-                        if (activeDigitIndex !== -1) {
-                            // 只有在非默认状态下，OK 才触发复位
-                            resetAll();
-                            
-                            // 简单的视觉反馈
-                            const hud = document.getElementById('hud-status');
-                            hud.innerText = "👌 RESET DETECTED";
-                            hud.style.color = "#00ff88";
-                            setTimeout(() => {
-                                hud.innerText = "SYSTEM: READY";
-                                hud.style.color = "#ffd700";
-                            }, 1000);
-                        }
+                        resetAll();
+                        hudStatus.innerText = "👌 复位指令已确认";
+                        hudStatus.style.color = "#00ff88";
                         lastOkTime = now;
                     }
                 }
             }
         });
 
+        // 启动摄像头 (静默启动，不阻塞画面)
         const cameraUtils = new Camera(videoElement, {
             onFrame: async () => await hands.send({image: videoElement}),
             width: 480, height: 360, facingMode: 'user'
         });
-        cameraUtils.start();
+        
+        cameraUtils.start().catch(e => {
+            hudStatus.innerText = "⚠️ 摄像头未授权 (仅点击模式)";
+            console.log(e);
+        });
 
         window.addEventListener('resize', () => { 
             camera.aspect = window.innerWidth / window.innerHeight; 
             camera.updateProjectionMatrix(); 
             renderer.setSize(window.innerWidth, window.innerHeight); 
         });
-
     </script>
 </body>
 </html>
