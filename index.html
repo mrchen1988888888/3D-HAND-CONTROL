@@ -3,292 +3,190 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>魔法传送门(调试版)</title>
+    <title>奇异博士传送门(极速版)</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Segoe UI', sans-serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        #input-video { position: absolute; opacity: 0; pointer-events: none; z-index: -1; transform: scaleX(-1); }
         
-        #input-video { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            opacity: 0; pointer-events: none; z-index: -1; 
-            transform: scaleX(-1);
-        }
-        
-        /* 调试日志窗口 (屏幕上方) */
-        #debug-console {
-            position: absolute; top: 0; left: 0; width: 100%; height: 50%;
-            background: rgba(0,0,0,0.8); z-index: 999;
-            padding: 15px; box-sizing: border-box;
-            color: #00ff88; font-family: monospace; font-size: 12px;
-            overflow-y: auto; pointer-events: none;
-            border-bottom: 2px solid #f5a623;
-        }
+        #hud { position: absolute; bottom: 50px; width: 100%; text-align: center; z-index: 10; pointer-events: none; }
+        .title { color: #f5a623; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px rgba(245, 166, 35, 0.8); margin-bottom: 10px; }
+        .status { color: #ddd; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; display: inline-block; font-size: 14px; }
 
-        #hud {
-            position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
-            text-align: center; pointer-events: none; z-index: 10; width: 100%;
-        }
-        .title {
-            color: #f5a623; font-size: 24px; font-weight: bold;
-            text-shadow: 0 0 10px rgba(245, 166, 35, 0.8);
-            letter-spacing: 2px; margin-bottom: 10px;
-        }
-        .subtitle {
-            color: rgba(255,255,255,0.8); font-size: 14px;
-            background: rgba(0,0,0,0.5); padding: 8px 16px; border-radius: 20px;
-            border: 1px solid rgba(245, 166, 35, 0.3);
-            display: inline-block;
-        }
+        #energy-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; pointer-events: none; opacity: 0.8; z-index: 5; }
         
-        #energy-bar-container {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 200px; height: 200px; pointer-events: none; opacity: 0.6; z-index: 5;
-        }
-        
-        .loading-mask {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200;
-        }
-        .spinner { width: 50px; height: 50px; border: 3px solid #333; border-top: 3px solid #f5a623; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 15px; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
-
-        .log-error { color: #ff5555; font-weight: bold; border: 1px solid red; padding: 5px; margin: 5px 0; }
-        .log-success { color: #00ff88; }
-        .log-warn { color: #ffff00; }
+        #loading { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+        .log-box { color: #00ff88; font-family: monospace; font-size: 12px; margin-top: 20px; text-align: center; max-width: 90%; }
     </style>
 </head>
 <body>
 
     <video id="input-video" playsinline webkit-playsinline></video>
     
-    <!-- 调试日志区域 -->
-    <div id="debug-console">
-        <div style="color:white; border-bottom:1px solid #555; padding-bottom:5px; margin-bottom:5px;">系统自检控制台</div>
-        <div id="log-content"></div>
+    <div id="loading">
+        <div style="color:#f5a623; font-size: 20px; font-weight:bold;">⚡ 正在接入魔法网络...</div>
+        <div class="log-box" id="debug-log">初始化中...</div>
     </div>
 
-    <div id="loading" class="loading-mask">
-        <div class="spinner"></div>
-        <div style="color:#f5a623; font-size: 16px;">系统启动中...</div>
-        <div style="color:#aaa; font-size:12px; margin-top:10px;">请查看上方日志</div>
-    </div>
-    
     <div id="hud">
-        <div class="title">DOCTOR STRANGE</div>
-        <div class="subtitle" id="status-text">初始化...</div>
+        <div class="title">SLING RING</div>
+        <div class="status" id="status-text">举起食指 顺时针画圈</div>
     </div>
 
-    <div id="energy-bar-container">
+    <div id="energy-container">
         <svg width="200" height="200" viewBox="0 0 200 200">
             <circle cx="100" cy="100" r="40" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2" />
-            <circle id="progress-ring" cx="100" cy="100" r="40" fill="none" stroke="#f5a623" stroke-width="4" stroke-dasharray="251" stroke-dashoffset="251" transform="rotate(-90 100 100)" stroke-linecap="round" />
+            <circle id="ring" cx="100" cy="100" r="40" fill="none" stroke="#f5a623" stroke-width="4" stroke-dasharray="251" stroke-dashoffset="251" transform="rotate(-90 100 100)" stroke-linecap="round" />
         </svg>
     </div>
 
-    <!-- 换回 unpkg 源，虽然慢一点点，但文件结构更稳定 -->
-    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://unpkg.com/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
+    <!-- 1. 使用国内 Eleme CDN 加载核心库 -->
+    <script src="https://npm.elemecdn.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://npm.elemecdn.com/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://npm.elemecdn.com/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://npm.elemecdn.com/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- 日志系统 ---
-        const logBox = document.getElementById('log-content');
-        function log(msg, type='info') {
-            const div = document.createElement('div');
-            const time = new Date().toLocaleTimeString();
-            div.innerText = `[${time}] ${msg}`;
-            if(type === 'error') div.className = 'log-error';
-            else if(type === 'success') div.className = 'log-success';
-            else if(type === 'warn') div.className = 'log-warn';
-            logBox.appendChild(div);
-            // 自动滚动到底部
-            document.getElementById('debug-console').scrollTop = document.getElementById('debug-console').scrollHeight;
-        }
+        const logEl = document.getElementById('debug-log');
+        function log(msg) { logEl.innerHTML = msg; console.log(msg); }
 
-        window.onerror = function(msg, url, line) {
-            log(`❌ 代码错误: ${msg} (Line:${line})`, 'error');
-            return false;
-        };
+        // --- Three.js ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.02);
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+        const renderer = new THREE.WebGLRenderer({antialias:false});
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        document.body.appendChild(renderer.domElement);
 
-        log("🚀 开始初始化程序...");
+        // 火花纹理
+        const canvas = document.createElement('canvas');
+        canvas.width=64; canvas.height=64;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(32,32,0,32,32,32);
+        grad.addColorStop(0,'white'); grad.addColorStop(0.2,'#ffc800'); grad.addColorStop(0.4,'#ff6400'); grad.addColorStop(1,'transparent');
+        ctx.fillStyle = grad; ctx.fillRect(0,0,64,64);
+        const texture = new THREE.CanvasTexture(canvas);
 
-        // --- 1. Three.js ---
-        let scene, camera, renderer, portalRing, mirrorWorld;
-        try {
-            scene = new THREE.Scene();
-            scene.fog = new THREE.FogExp2(0x000000, 0.02);
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 15;
-            renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-            document.body.appendChild(renderer.domElement);
-            log("✅ Three.js 图形引擎启动成功", 'success');
-        } catch(e) {
-            log("❌ WebGL 启动失败: " + e.message, 'error');
-        }
-
-        function createSparkTexture() {
-            const canvas = document.createElement('canvas');
-            canvas.width = 64; canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-            grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            grad.addColorStop(0.2, 'rgba(255, 200, 50, 1)');
-            grad.addColorStop(0.4, 'rgba(255, 100, 0, 0.8)');
-            grad.addColorStop(1, 'rgba(100, 0, 0, 0)');
-            ctx.fillStyle = grad; ctx.fillRect(0, 0, 64, 64);
-            return new THREE.CanvasTexture(canvas);
-        }
-
-        const sparkTexture = createSparkTexture();
-        const PARTICLE_COUNT = 3000;
-        const geometry = new THREE.BufferGeometry();
-        const positions = new Float32Array(PARTICLE_COUNT * 3);
-        const sizes = new Float32Array(PARTICLE_COUNT);
-        const speeds = new Float32Array(PARTICLE_COUNT);
-        const angles = new Float32Array(PARTICLE_COUNT);
-        const radii = new Float32Array(PARTICLE_COUNT);
+        // 粒子系统
+        const count = 2500;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(count*3);
+        const speeds = new Float32Array(count);
+        const angles = new Float32Array(count);
+        const radii = new Float32Array(count);
         
-        for(let i=0; i<PARTICLE_COUNT; i++) {
-            angles[i] = Math.random() * Math.PI * 2;
-            radii[i] = (Math.random() - 0.5) * 1.5;
-            speeds[i] = 2 + Math.random() * 3;
-            positions[i*3] = 9999; positions[i*3+1] = 9999; positions[i*3+2] = 0;
-            sizes[i] = Math.random() * 0.5 + 0.1;
+        for(let i=0; i<count; i++) {
+            angles[i] = Math.random()*Math.PI*2;
+            radii[i] = (Math.random()-0.5)*1.5;
+            speeds[i] = 2+Math.random()*3;
+            pos[i*3]=999; pos[i*3+1]=999; pos[i*3+2]=0;
         }
-        
-        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+        geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+        const mat = new THREE.PointsMaterial({size:0.4, map:texture, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
+        const ring = new THREE.Points(geo, mat);
+        scene.add(ring);
 
-        const material = new THREE.PointsMaterial({
-            size: 0.3, color: 0xffaa00, map: sparkTexture,
-            transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending,
-            depthWrite: false
-        });
+        const mirror = new THREE.Mesh(
+            new THREE.IcosahedronGeometry(1,2),
+            new THREE.MeshBasicMaterial({color:0x001133, wireframe:true, transparent:true, opacity:0})
+        );
+        scene.add(mirror);
 
-        portalRing = new THREE.Points(geometry, material);
-        scene.add(portalRing);
-
-        const mirrorGeo = new THREE.IcosahedronGeometry(1, 2);
-        const mirrorMat = new THREE.MeshBasicMaterial({ color: 0x001133, wireframe: true, transparent: true, opacity: 0 });
-        mirrorWorld = new THREE.Mesh(mirrorGeo, mirrorMat);
-        scene.add(mirrorWorld);
-
-        let portalState = { currentRadius: 0, targetRadius: 0, maxRadius: 6, rotationProgress: 0 };
+        let state = { r:0, targetR:0, progress:0 };
 
         function animate() {
             requestAnimationFrame(animate);
-            portalState.currentRadius += (portalState.targetRadius - portalState.currentRadius) * 0.05;
-            mirrorWorld.scale.setScalar(portalState.currentRadius * 0.9);
-            mirrorWorld.material.opacity = Math.min(1, portalState.currentRadius / 3);
-            mirrorWorld.rotation.y += 0.01; mirrorWorld.rotation.z += 0.005;
+            state.r += (state.targetR - state.r)*0.08;
+            mirror.scale.setScalar(state.r*0.9);
+            mirror.material.opacity = Math.min(1, state.r/3);
+            mirror.rotation.y += 0.01;
             
-            const posAttr = portalRing.geometry.attributes.position;
-            const posArr = posAttr.array;
-            portalRing.rotation.z -= 0.02; 
-
-            for(let i=0; i<PARTICLE_COUNT; i++) {
-                const idx = i*3;
-                angles[i] += speeds[i] * 0.01;
-                const r = portalState.currentRadius + radii[i];
-                if (portalState.currentRadius > 0.1) {
-                    posArr[idx] = Math.cos(angles[i]) * r + (Math.random()-0.5)*0.1;
-                    posArr[idx+1] = Math.sin(angles[i]) * r + (Math.random()-0.5)*0.1;
-                    posArr[idx+2] = (Math.random() - 0.5) * 0.5;
-                } else {
-                    posArr[idx] = 9999;
-                }
+            ring.rotation.z -= 0.03;
+            const p = ring.geometry.attributes.position.array;
+            for(let i=0; i<count; i++) {
+                angles[i] += speeds[i]*0.01;
+                const r = state.r + radii[i];
+                if(state.r > 0.1) {
+                    p[i*3] = Math.cos(angles[i])*r + (Math.random()-0.5)*0.15;
+                    p[i*3+1] = Math.sin(angles[i])*r + (Math.random()-0.5)*0.15;
+                    p[i*3+2] = (Math.random()-0.5);
+                } else { p[i*3]=999; }
             }
-            posAttr.needsUpdate = true;
+            ring.geometry.attributes.position.needsUpdate = true;
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 2. MediaPipe 初始化 ---
-        log("⏳ 正在加载 AI 核心...");
+        // --- MediaPipe (极速版配置) ---
+        log("🚀 正在从国内镜像下载 AI 模型...");
         
-        const circleRing = document.getElementById('progress-ring');
-        const statusText = document.getElementById('status-text');
-        let lastAngle = null;
+        const video = document.getElementById('input-video');
+        const uiRing = document.getElementById('ring');
+        const uiText = document.getElementById('status-text');
+        let lastAng = null;
 
-        function getAngle(x, y) { return Math.atan2(y - 0.5, x - 0.5); }
-
-        // 使用 unpkg 替代 elemecdn，虽然慢一点但更稳定
+        // 2. 强制使用 Eleme CDN 加载模型文件
         const hands = new Hands({locateFile: (file) => {
-            log(`📥 请求模型文件: ${file}`);
-            return `https://unpkg.com/@mediapipe/hands/${file}`;
+            return `https://npm.elemecdn.com/@mediapipe/hands/${file}`;
         }});
 
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
+        // 3. 使用 Lite 模型 (0) 加速加载和运行
+        hands.setOptions({ 
+            maxNumHands: 1, 
+            modelComplexity: 0, // 0=Lite (最快), 1=Full
+            minDetectionConfidence: 0.5, 
+            minTrackingConfidence: 0.5 
+        });
 
-        let isModelLoaded = false;
-        
-        hands.onResults((results) => {
-            if (!isModelLoaded) {
-                isModelLoaded = true;
-                log("🎉 AI 模型加载成功！", 'success');
+        let loaded = false;
+        hands.onResults(res => {
+            if(!loaded) {
+                loaded = true;
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('debug-console').style.display = 'none'; // 成功后隐藏调试框
             }
-
-            const handsDetected = results.multiHandLandmarks && results.multiHandLandmarks.length > 0;
-            if (handsDetected) {
-                const lm = results.multiHandLandmarks[0];
-                const fingerTip = lm[8]; 
-                const currentAngle = getAngle(fingerTip.x, fingerTip.y);
+            if(res.multiHandLandmarks.length > 0) {
+                const lm = res.multiHandLandmarks[0];
+                const tip = lm[8];
+                const ang = Math.atan2(tip.y-0.5, tip.x-0.5);
                 
-                if (lastAngle !== null) {
-                    let delta = currentAngle - lastAngle;
-                    if (delta > Math.PI) delta -= Math.PI * 2;
-                    if (delta < -Math.PI) delta += Math.PI * 2;
-                    if (Math.abs(delta) < 0.5) {
-                        portalState.rotationProgress += delta * 1.5; 
-                    }
+                if(lastAng !== null) {
+                    let d = ang - lastAng;
+                    if(d > Math.PI) d -= Math.PI*2;
+                    if(d < -Math.PI) d += Math.PI*2;
+                    if(Math.abs(d) < 0.5) state.progress += d * 2.0;
                 }
-                lastAngle = currentAngle;
-                const MAX_ROTATION = Math.PI * 4;
-                portalState.rotationProgress = Math.max(0, Math.min(portalState.rotationProgress, MAX_ROTATION));
-                const progressRatio = portalState.rotationProgress / MAX_ROTATION;
-                portalState.targetRadius = progressRatio * portalState.maxRadius;
-                circleRing.style.strokeDashoffset = 251 - (251 * progressRatio);
+                lastAng = ang;
+                state.progress = Math.max(0, Math.min(state.progress, Math.PI*4));
+                const ratio = state.progress / (Math.PI*4);
+                state.targetR = ratio * 6;
+                uiRing.style.strokeDashoffset = 251 - (251*ratio);
                 
-                if (progressRatio < 0.1) {
-                    statusText.innerText = "举起食指 顺时针画圈"; statusText.style.color = "#aaa";
-                } else if (progressRatio < 0.9) {
-                    statusText.innerText = `充能中... ${(progressRatio*100).toFixed(0)}%`; statusText.style.color = "#f5a623";
-                } else {
-                    statusText.innerText = "传送门开启"; statusText.style.color = "#00ff88";
-                }
+                if(ratio > 0.8) { uiText.innerText = "传送门已开启"; uiText.style.color="#0f8"; }
+                else if(ratio > 0.1) { uiText.innerText = `充能 ${(ratio*100).toFixed(0)}%`; uiText.style.color="#f80"; }
+                else { uiText.innerText = "顺时针画圈"; uiText.style.color="#ddd"; }
             } else {
-                lastAngle = null;
-                statusText.innerText = "信号丢失 - 传送门闭合";
-                portalState.targetRadius = 0;
-                portalState.rotationProgress *= 0.95; 
+                lastAng = null;
+                state.targetR = 0;
+                state.progress *= 0.9;
+                uiText.innerText = "信号丢失"; uiText.style.color="#555";
             }
         });
 
-        // 启动摄像头
-        log("📷 正在请求摄像头权限...");
-        const cameraUtils = new Camera(document.getElementById('input-video'), {
-            onFrame: async () => {
-                await hands.send({image: document.getElementById('input-video')});
-            },
+        const cam = new Camera(video, {
+            onFrame: async () => await hands.send({image: video}),
             width: 640, height: 480, facingMode: 'user'
         });
         
-        cameraUtils.start()
-            .then(() => {
-                log("✅ 摄像头启动成功", 'success');
-                log("⏳ 等待 AI 模型下载... (若此处卡住请检查网络)", 'warn');
-            })
-            .catch(e => {
-                log(`❌ 摄像头错误: ${e.message}`, 'error');
-                log("💡 请检查：1.是否允许了权限 2.是否是HTTPS链接", 'warn');
-            });
-            
-        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+        cam.start()
+           .then(() => log("✅ 摄像头就绪，正在下载模型..."))
+           .catch(e => log(`❌ 摄像头错误: ${e.message}<br>请允许权限并使用HTTPS`));
 
+        window.onresize = () => {
+            camera.aspect = window.innerWidth/window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        };
     </script>
 </body>
 </html>
