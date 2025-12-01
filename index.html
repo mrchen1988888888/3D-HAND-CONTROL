@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>2025 新年粒子(极速版)</title>
+    <title>2025 Particle System (Global)</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #1a0505; font-family: 'Segoe UI', sans-serif; }
         
@@ -33,18 +33,20 @@
             white-space: nowrap;
         }
 
-        /* 状态指示改成左上角小字，不遮挡视线 */
+        /* 状态指示 HUD (左上角) */
         #hud-status {
             position: absolute; top: 80px; left: 20px;
-            font-size: 12px; color: #888;
+            font-size: 12px; color: #aaa;
             font-family: monospace;
             z-index: 50;
-            background: rgba(0,0,0,0.5);
-            padding: 5px 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 8px 12px;
             border-radius: 4px;
+            border-left: 3px solid #666;
+            max-width: 200px;
         }
 
-        /* 加载层样式优化 */
+        /* 加载遮罩 */
         .loading-mask {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000;
             display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 200;
@@ -60,36 +62,38 @@
     
     <div id="loading" class="loading-mask">
         <div class="spinner"></div>
-        <div id="loading-text" style="color:#ffd700; font-size: 14px;">资源加载中...</div>
+        <div id="loading-text" style="color:#ffd700; font-size: 14px;">Loading Visuals...</div>
     </div>
     
     <div id="title-display">HAPPY NEW YEAR 2025</div>
-    <div id="hud-status">AI 系统: 初始化中...</div>
+    
+    <!-- 状态显示区域 -->
+    <div id="hud-status">
+        <div>3D 系统: <span style="color:#00ff88">就绪</span></div>
+        <div id="ai-log">AI 系统: 等待加载...</div>
+    </div>
     
     <div id="guide-panel">
-        🖱️ 点击数字互动 | 👌 OK手势复位
+        🖱️ 点击交互 | 👌 OK手势复位
     </div>
 
-    <!-- 依然使用国内源 -->
-    <script src="https://npm.elemecdn.com/three@0.128.0/build/three.min.js"></script>
-    <script src="https://npm.elemecdn.com/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://npm.elemecdn.com/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://npm.elemecdn.com/@mediapipe/hands/hands.js"></script>
+    <!-- 使用国际标准源 jsdelivr -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- 错误处理与加载控制 ---
-        const loadingMask = document.getElementById('loading');
-        const loadText = document.getElementById('loading-text');
-        
-        // 强制 3秒后无论如何都隐藏加载层，保证用户能看到画面
-        setTimeout(() => {
-            if(loadingMask.style.display !== 'none') {
-                loadingMask.style.opacity = '0';
-                setTimeout(()=> loadingMask.style.display = 'none', 500);
-            }
-        }, 2000);
+        const aiLog = document.getElementById('ai-log');
+        const hudStatus = document.getElementById('hud-status');
 
-        // --- 1. Three.js 初始化 ---
+        function updateAiStatus(msg, color="#aaa") {
+            aiLog.innerHTML = `AI 系统: <span style="color:${color}">${msg}</span>`;
+            if(color === "#ff5555") hudStatus.style.borderLeftColor = "#ff5555";
+            if(color === "#00ff88") hudStatus.style.borderLeftColor = "#00ff88";
+        }
+
+        // --- 1. Three.js 初始化 (立即执行) ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x1a0505, 0.002);
         
@@ -104,15 +108,12 @@
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
         scene.add(ambientLight);
 
-        // --- 2. 数字粒子生成 (Canvas法) ---
+        // --- 2. 创建 2025 粒子 ---
         const digitMeshes = [];
         const digitData = [
             { char: "2", x: -9 }, { char: "0", x: -3 }, { char: "2", x: 3 }, { char: "5", x: 9 }
         ];
-
-        const targets = {
-            center: new THREE.Vector3(0, 0, 10)
-        };
+        const targets = { center: new THREE.Vector3(0, 0, 10) };
         let activeDigitIndex = -1;
 
         function createTextParticles(text, offsetX) {
@@ -143,17 +144,16 @@
             return mesh;
         }
 
-        // 生成数字
         digitData.forEach(d => digitMeshes.push(createTextParticles(d.char, d.x)));
 
-        // 手动隐藏加载层 (3D创建完毕)
-        loadText.innerText = "启动视觉系统...";
+        // --- 3D 场景加载完毕，立即移除遮罩 ---
+        const loadingMask = document.getElementById('loading');
         setTimeout(() => {
-             loadingMask.style.opacity = '0';
-             setTimeout(()=> loadingMask.style.display = 'none', 500);
-        }, 500);
+            loadingMask.style.opacity = '0';
+            setTimeout(()=> loadingMask.style.display = 'none', 500);
+        }, 1000); // 1秒后强制进入，不等AI
 
-        // --- 3. 交互逻辑 ---
+        // --- 3. 交互 ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
         raycaster.params.Points.threshold = 1.0;
@@ -167,27 +167,12 @@
                 const index = digitMeshes.indexOf(intersects[0].object);
                 if (index !== -1 && index !== activeDigitIndex) {
                     activeDigitIndex = index;
-                    document.getElementById('hud-status').innerText = `选中数字: ${digitData[index].char}`;
-                    document.getElementById('hud-status').style.color = "#ffdd00";
                 }
-            } else {
-                 // 点击空白处复位 (可选)
-                 // resetAll();
             }
         }
-
         window.addEventListener('click', e => handleInput(e.clientX, e.clientY));
-        window.addEventListener('touchstart', e => {
-            e.preventDefault();
-            handleInput(e.touches[0].clientX, e.touches[0].clientY);
-        }, {passive: false});
-
-        function resetAll() {
-            if (activeDigitIndex === -1) return;
-            activeDigitIndex = -1;
-            document.getElementById('hud-status').innerText = "系统就绪 (等待手势)";
-            document.getElementById('hud-status').style.color = "#888";
-        }
+        window.addEventListener('touchstart', e => { e.preventDefault(); handleInput(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+        function resetAll() { if (activeDigitIndex === -1) return; activeDigitIndex = -1; }
 
         // --- 4. 动画 ---
         function animate() {
@@ -195,76 +180,78 @@
             digitMeshes.forEach((mesh, i) => {
                 mesh.rotation.y += 0.005;
                 let targetPos, targetScale, targetOpacity;
-                
                 if (activeDigitIndex === -1) {
-                    targetPos = mesh.userData.originalPos;
-                    targetScale = 1.0; targetOpacity = 0.9;
+                    targetPos = mesh.userData.originalPos; targetScale = 1.0; targetOpacity = 0.9;
                 } else {
-                    if (i === activeDigitIndex) {
-                        targetPos = targets.center;
-                        targetScale = 2.0; targetOpacity = 1.0;
-                    } else {
-                        // 没被选中的，向两边散开
-                        targetPos = mesh.userData.originalPos.clone().multiplyScalar(5); 
-                        targetScale = 0.1; targetOpacity = 0.0;
-                    }
+                    if (i === activeDigitIndex) { targetPos = targets.center; targetScale = 2.0; targetOpacity = 1.0; } 
+                    else { targetPos = mesh.userData.originalPos.clone().multiplyScalar(5); targetScale = 0.1; targetOpacity = 0.0; }
                 }
                 mesh.position.lerp(targetPos, 0.08);
                 const s = mesh.scale.x + (targetScale - mesh.scale.x) * 0.08;
                 mesh.scale.set(s,s,s);
                 mesh.material.opacity += (targetOpacity - mesh.material.opacity) * 0.1;
-                mesh.material.size = (targetScale > 1.5 ? 0.35 : 0.25);
             });
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 5. AI 手势 (后台静默加载) ---
+        // --- 5. AI 系统 (异步加载，国际源) ---
+        updateAiStatus("正在连接 MediaPipe...", "#ffaa00");
+
         const videoElement = document.getElementById('input-video');
-        const hudStatus = document.getElementById('hud-status');
         let lastOkTime = 0;
 
-        const hands = new Hands({locateFile: (file) => `https://npm.elemecdn.com/@mediapipe/hands/${file}`});
+        // 使用 jsdelivr
+        const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+        
         hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-
+        
         hands.onResults((results) => {
-            // 只要手势开始工作，更新状态
-            if (hudStatus.innerText.includes("初始化")) hudStatus.innerText = "AI 视觉已启动";
+            // 一旦有结果返回，说明 AI 正常工作
+            if (aiLog.innerText.includes("连接") || aiLog.innerText.includes("下载")) {
+                updateAiStatus("运行中 (OK手势可用)", "#00ff88");
+            }
 
             if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
                 const lm = results.multiHandLandmarks[0];
-                // OK手势检测
                 const pinch = Math.hypot(lm[4].x-lm[8].x, lm[4].y-lm[8].y) / Math.hypot(lm[0].x-lm[9].x, lm[0].y-lm[9].y) < 0.25;
                 const threeUp = lm[12].y < lm[2].y && lm[16].y < lm[2].y && lm[20].y < lm[2].y;
-                
                 if (pinch && threeUp) {
-                    const now = Date.now();
-                    if (now - lastOkTime > 1000) {
+                    if (Date.now() - lastOkTime > 1000) {
                         resetAll();
-                        hudStatus.innerText = "👌 复位指令已确认";
-                        hudStatus.style.color = "#00ff88";
-                        lastOkTime = now;
+                        updateAiStatus("检测到复位", "#00ffff");
+                        setTimeout(() => updateAiStatus("运行中", "#00ff88"), 1000);
+                        lastOkTime = Date.now();
                     }
                 }
             }
         });
 
-        // 启动摄像头 (静默启动，不阻塞画面)
+        // 启动摄像头
+        updateAiStatus("请求摄像头权限...");
         const cameraUtils = new Camera(videoElement, {
             onFrame: async () => await hands.send({image: videoElement}),
             width: 480, height: 360, facingMode: 'user'
         });
-        
-        cameraUtils.start().catch(e => {
-            hudStatus.innerText = "⚠️ 摄像头未授权 (仅点击模式)";
-            console.log(e);
-        });
 
-        window.addEventListener('resize', () => { 
-            camera.aspect = window.innerWidth / window.innerHeight; 
-            camera.updateProjectionMatrix(); 
-            renderer.setSize(window.innerWidth, window.innerHeight); 
-        });
+        cameraUtils.start()
+            .then(() => {
+                updateAiStatus("摄像头已开，下载模型中...", "#ffaa00");
+            })
+            .catch(e => {
+                console.error(e);
+                updateAiStatus("摄像头失败: 请检查权限", "#ff5555");
+            });
+
+        // 超时检测
+        setTimeout(() => {
+            const statusText = aiLog.innerText;
+            if(statusText.includes("连接") || statusText.includes("下载")) {
+                updateAiStatus("连接超时 (请检查网络/VPN)", "#ff5555");
+            }
+        }, 30000); // 30秒超时判断
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
     </script>
 </body>
 </html>
