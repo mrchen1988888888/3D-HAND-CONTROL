@@ -3,27 +3,21 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Strange: Final Visual Fix</title>
+    <title>Dr. Strange: Solid Geometry</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: monospace; }
         
-        /* 1. 视频层 */
+        /* 视频层 */
         #input-video { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             z-index: 1; transform: scaleX(-1); object-fit: cover;
             opacity: 0.4; 
         }
 
-        /* 2. 调试层 */
+        /* 骨架调试层 */
         #debug-canvas {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             z-index: 2; pointer-events: none; transform: scaleX(-1);
-        }
-
-        /* 3. 特效层 (确保在最上层) */
-        #gl-canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 10; pointer-events: none;
         }
 
         /* UI */
@@ -31,7 +25,6 @@
         .status {
             background: rgba(0, 0, 0, 0.8); color: #ffaa00; padding: 12px 30px; 
             border: 2px solid #ffaa00; font-size: 18px; font-weight: bold; border-radius: 30px;
-            box-shadow: 0 0 20px #ffaa00;
         }
 
         #start-btn {
@@ -52,7 +45,7 @@
     <video id="input-video" playsinline></video>
     <canvas id="debug-canvas"></canvas>
     
-    <div id="loader">LOADING MAGIC...</div>
+    <div id="loader">LOADING GEOMETRY...</div>
     <button id="start-btn" onclick="init()">START SYSTEM</button>
     <div id="hud"><div class="status" id="status">STANDBY</div></div>
 
@@ -71,121 +64,122 @@
         
         // --- 1. VISUAL ENGINE ---
         const scene = new THREE.Scene();
-        // Remove fog to ensure brightness
-        // scene.fog = new THREE.FogExp2(0x000000, 0.05); 
-
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.z = 14;
 
-        const renderer = new THREE.WebGLRenderer({alpha: true, antialias: false});
+        const renderer = new THREE.WebGLRenderer({alpha: true, antialias: true}); // Antialias ON
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.domElement.id = 'gl-canvas';
         document.body.appendChild(renderer.domElement);
 
-        // -- Texture (Super Bright) --
-        const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64;
-        const ctx = cvs.getContext('2d');
-        const gr = ctx.createRadialGradient(32,32,0,32,32,32);
-        gr.addColorStop(0,'#ffffff'); 
-        gr.addColorStop(0.3,'#ffaa00'); 
-        gr.addColorStop(0.6,'#ff4400'); 
-        gr.addColorStop(1,'transparent');
-        ctx.fillStyle=gr; ctx.fillRect(0,0,64,64);
-        const tex = new THREE.CanvasTexture(cvs);
-
-        // -- Particle System --
-        const COUNT = 5000;
-        const geo = new THREE.BufferGeometry();
-        const pos = new Float32Array(COUNT*3);
-        const col = new Float32Array(COUNT*3);
-        const vel = new Float32Array(COUNT*3);
-        const life = new Float32Array(COUNT);
-
-        for(let i=0; i<COUNT; i++) { pos[i*3]=9999; life[i]=0; }
+        // --- 2. 实体碎片系统 (Solid Mesh System) ---
+        // 我们不再用 Points，而是用 800 个真实的 Mesh
+        const COUNT = 800; 
+        const sparks = []; // 存储所有碎片对象
         
-        geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-        geo.setAttribute('color', new THREE.BufferAttribute(col,3));
+        // 创建一个共享的几何体和材质（优化性能）
+        const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.4); // 长条形碎片
+        const material = new THREE.MeshBasicMaterial({color: 0xffaa00}); // 纯色发光
 
-        const mat = new THREE.PointsMaterial({
-            size: 1.5, // INCREASED SIZE FOR IPAD
-            map: tex, 
-            transparent: true, 
-            opacity: 1,
-            vertexColors: true, 
-            blending: THREE.AdditiveBlending, 
-            depthWrite: false
-        });
-        const sys = new THREE.Points(geo, mat);
-        // Move particles forward so they sit ON TOP of the black hole
-        sys.position.z = 0.5; 
-        scene.add(sys);
+        // 创建碎片池
+        const container = new THREE.Group();
+        scene.add(container);
 
-        // -- The Void (Black Hole) --
+        for(let i=0; i<COUNT; i++) {
+            const mesh = new THREE.Mesh(geometry, material);
+            
+            // 初始化属性
+            mesh.userData = {
+                life: 0,
+                speed: 0,
+                angle: 0,
+                radiusOffset: 0
+            };
+            
+            // 先把它们藏在很远的地方
+            mesh.position.set(999, 999, 999);
+            
+            container.add(mesh);
+            sparks.push(mesh);
+        }
+
+        // -- 黑色虚空 (Black Hole) --
         const voidGeo = new THREE.CircleGeometry(1, 64);
         const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const portalVoid = new THREE.Mesh(voidGeo, voidMat);
-        portalVoid.position.z = 0; // Behind particles
+        portalVoid.position.z = -0.5; // 放在碎片后面
         scene.add(portalVoid);
 
-        // --- 2. LOGIC ---
+        // --- 3. 物理逻辑 ---
         let State = { r:0, tr:0 };
 
         function animate() {
             requestAnimationFrame(animate);
             
-            // Physics
+            // 缓动半径
             State.r += (State.tr - State.r) * 0.1;
             
-            // Scale Void
-            portalVoid.scale.setScalar(Math.max(0.01, State.r * 0.8));
+            // 更新虚空大小
+            portalVoid.scale.setScalar(Math.max(0.01, State.r * 0.85));
             
-            // Rotate System
-            sys.rotation.z -= 0.03; 
+            // 旋转整个容器
+            container.rotation.z -= 0.05;
 
+            // 更新每一个碎片
             for(let i=0; i<COUNT; i++) {
-                const idx = i*3;
-                life[i] -= 0.025; // Die faster for more flicker
+                const s = sparks[i];
+                const data = s.userData;
 
-                if(life[i] <= 0) {
+                data.life -= 0.02; // 生命衰减
+
+                if(data.life <= 0) {
+                    // 如果死了，且传送门开着，就重生
                     if(State.r > 0.5) {
-                        // Respawn on Edge
-                        const angle = Math.random() * 6.28;
-                        const r = State.r + (Math.random()-0.5)*0.3;
-
-                        pos[idx] = Math.cos(angle) * r;
-                        pos[idx+1] = Math.sin(angle) * r;
-                        pos[idx+2] = (Math.random()-0.5)*0.5;
-
-                        // Tangential Velocity
-                        const s = 0.2 + Math.random()*0.1;
-                        vel[idx] = -Math.sin(angle)*s; 
-                        vel[idx+1] = Math.cos(angle)*s; 
-                        vel[idx+2] = 0;
-
-                        life[i] = 1.0;
+                        data.life = 1.0;
+                        data.angle = Math.random() * Math.PI * 2;
+                        data.radiusOffset = (Math.random()-0.5) * 0.5;
+                        data.speed = 0.2 + Math.random() * 0.2;
+                        
+                        // 放在环上
+                        const r = State.r + data.radiusOffset;
+                        s.position.x = Math.cos(data.angle) * r;
+                        s.position.y = Math.sin(data.angle) * r;
+                        s.position.z = (Math.random()-0.5) * 0.5;
+                        
+                        // 随机朝向
+                        s.rotation.set(Math.random(), Math.random(), Math.random());
+                        
+                        // 设为可见
+                        s.visible = true;
                     } else {
-                        pos[idx] = 9999;
+                        s.visible = false; // 隐藏
                     }
                 } else {
-                    pos[idx] += vel[idx];
-                    pos[idx+1] += vel[idx+1];
-                    pos[idx+2] += vel[idx+2];
+                    if(s.visible) {
+                        // 物理运动：切线方向飞出
+                        // 切线向量: (-sin, cos)
+                        s.position.x -= Math.sin(data.angle) * data.speed;
+                        s.position.y += Math.cos(data.angle) * data.speed;
+                        
+                        // 旋转特效
+                        s.rotation.x += 0.1;
+                        s.rotation.y += 0.1;
 
-                    // Color Update
-                    const l = life[i];
-                    if(l > 0.7) { col[idx]=1; col[idx+1]=1; col[idx+2]=1; } // White
-                    else if(l > 0.4) { col[idx]=1; col[idx+1]=0.7; col[idx+2]=0; } // Gold
-                    else { col[idx]=1; col[idx+1]=0.1; col[idx+2]=0; } // Red
+                        // 颜色变化 (模拟冷却: 黄 -> 红)
+                        if(data.life > 0.5) s.material = material; // 黄
+                        else s.material = new THREE.MeshBasicMaterial({color: 0xff0000}); // 红 (注意：这会增加DrawCall，为了性能暂且简化)
+                        // 修正：为了性能，我们统一用橙色，只改大小模拟消失
+                        
+                        const scale = data.life; 
+                        s.scale.set(scale, scale, scale);
+                    }
                 }
             }
             
-            geo.attributes.position.needsUpdate = true;
-            geo.attributes.color.needsUpdate = true;
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 3. HAND TRACKING ---
+        // --- 4. AI 控制 ---
         async function init() {
             document.getElementById('start-btn').style.display = 'none';
             document.getElementById('loader').style.display = 'flex';
@@ -211,35 +205,36 @@
         }
 
         function onResults(results) {
-            // Draw Skeleton
+            // 画骨架
             debugCtx.save();
             debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
             if (results.multiHandLandmarks) {
                 for (const landmarks of results.multiHandLandmarks) {
-                    drawConnectors(debugCtx, landmarks, HAND_CONNECTIONS, {color: '#00ff00', lineWidth: 2});
+                    drawConnectors(debugCtx, landmarks, HAND_CONNECTIONS, {color: '#00ff88', lineWidth: 2});
                     drawLandmarks(debugCtx, landmarks, {color: '#ff0000', lineWidth: 1, radius: 4});
                 }
             }
             debugCtx.restore();
 
-            // Distance Logic
+            // 双手距离控制
             if (results.multiHandLandmarks.length === 2) {
                 const h1 = results.multiHandLandmarks[0][0];
                 const h2 = results.multiHandLandmarks[1][0];
                 const dist = Math.hypot(h1.x - h2.x, h1.y - h2.y);
                 
-                // Map distance to size
-                // 0.15 (Close) -> 0.7 (Far)
+                // 0.1 (合拢) -> 0.6 (张开)
                 let openAmt = (dist - 0.15) * 2.5; 
                 openAmt = Math.max(0, Math.min(1, openAmt));
                 
-                State.tr = openAmt * 6.5; // Max radius 6.5
+                State.tr = openAmt * 6.5; // 最大半径
 
-                statusText.innerText = `POWER: ${(openAmt*100).toFixed(0)}%`;
+                statusText.innerText = `ENERGY: ${(openAmt*100).toFixed(0)}%`;
+                statusText.style.color = "#ffaa00";
                 
             } else {
                 State.tr = 0;
-                statusText.innerText = "REQUIRE 2 HANDS";
+                statusText.innerText = "WAITING FOR 2 HANDS";
+                statusText.style.color = "#fff";
             }
         }
 
