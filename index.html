@@ -3,15 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Strange: Time Weaver</title>
+    <title>Doctor Strange: Sling Ring</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Cinzel', serif; }
         
-        /* Video Layer (Mirrored) */
+        /* Mirror video for natural interaction */
         #input-video { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             opacity: 0; pointer-events: none; z-index: -1; 
             transform: scaleX(-1);
+        }
+
+        /* Cinematic HUD */
+        #hud-layer {
+            position: absolute; bottom: 40px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        
+        .spell-name {
+            color: #f5a623; font-size: 28px; font-weight: 800; letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(245, 166, 35, 0.8);
+            text-transform: uppercase; margin: 0;
+        }
+        
+        .spell-status {
+            color: rgba(255, 255, 255, 0.9); font-size: 14px; font-family: sans-serif;
+            background: rgba(10, 10, 10, 0.8); padding: 8px 20px; border-radius: 20px;
+            border: 1px solid rgba(245, 166, 35, 0.5); backdrop-filter: blur(4px);
+            transition: all 0.2s;
+        }
+
+        /* Center Energy Ring UI */
+        #energy-ui {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 200px; height: 200px; pointer-events: none; opacity: 0.6; z-index: 5;
         }
 
         /* Loading Screen */
@@ -23,55 +48,14 @@
         }
         .spinner {
             width: 50px; height: 50px; border: 3px solid #222; 
-            border-top: 3px solid #00ff88; border-radius: 50%; 
+            border-top: 3px solid #f5a623; border-radius: 50%; 
             animation: spin 1s linear infinite; margin-bottom: 20px;
         }
-        .log-text { color: #00ff88; font-size: 12px; }
-
-        /* HUD Controller */
-        #controller {
-            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
-            z-index: 20; display: flex; flex-direction: column; align-items: center;
-            opacity: 0; transition: opacity 1s;
-        }
-
-        .rune-label {
-            color: #ffaa00; font-size: 12px; letter-spacing: 2px; margin-bottom: 10px;
-            text-shadow: 0 0 5px #ffaa00; opacity: 0.8;
-        }
-
-        .rune-dial {
-            width: 70px; height: 70px;
-            border-radius: 50%;
-            border: 2px solid rgba(255, 170, 0, 0.3);
-            background: rgba(0, 0, 0, 0.6);
-            position: relative;
-            box-shadow: 0 0 20px rgba(255, 170, 0, 0.2);
-            transition: all 0.2s;
-        }
-
-        /* The rotating part */
-        .rune-inner {
-            position: absolute; top: 5px; left: 5px; right: 5px; bottom: 5px;
-            border-radius: 50%;
-            border: 2px dashed #ffaa00;
-            transform: rotate(0deg);
-            transition: transform 0.1s, border-color 0.2s;
-        }
-
-        .value-display {
-            margin-top: 10px; color: #fff; font-size: 16px; font-weight: bold; text-shadow: 0 0 10px #000;
-        }
-
-        /* Status Text */
-        .status-pill {
-            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
-            color: #aaa; background: rgba(0,0,0,0.5); padding: 5px 15px; 
-            border-radius: 15px; font-size: 12px; z-index: 20;
-        }
+        .log-text { color: #f5a623; font-size: 12px; font-family: monospace; }
 
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -79,21 +63,25 @@
     
     <div id="loader">
         <div class="spinner"></div>
-        <div class="log-text" id="sys-log">INITIALIZING AI VISION...</div>
+        <div class="log-text" id="sys-log">OPENING THE EYE OF AGAMOTTO...</div>
     </div>
 
-    <div class="status-pill" id="status-text">WAITING FOR HAND SIGNAL</div>
-
-    <!-- The Speed Controller HUD -->
-    <div id="controller">
-        <div class="rune-label">CHRONO DIAL</div>
-        <div class="rune-dial" id="knob">
-            <div class="rune-inner" id="knob-rotator"></div>
-        </div>
-        <div class="value-display" id="speed-val">1.0x</div>
+    <div id="hud-layer">
+        <h1 class="spell-name">Sling Ring</h1>
+        <div class="spell-status" id="status-text">INITIALIZING...</div>
     </div>
 
-    <!-- Libraries (Global CDN) -->
+    <div id="energy-ui">
+        <svg width="200" height="200" viewBox="0 0 200 200">
+            <!-- Background Ring -->
+            <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
+            <!-- Progress Ring -->
+            <circle id="progress-circle" cx="100" cy="100" r="60" fill="none" stroke="#f5a623" stroke-width="4" 
+                    stroke-dasharray="377" stroke-dashoffset="377" transform="rotate(-90 100 100)" stroke-linecap="round"/>
+        </svg>
+    </div>
+
+    <!-- GLOBAL CDN SOURCES -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://unpkg.com/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://unpkg.com/@mediapipe/control_utils/control_utils.js"></script>
@@ -103,170 +91,146 @@
         const logBox = document.getElementById('sys-log');
         function log(msg) { logBox.innerText = msg; console.log(msg); }
 
-        // --- 1. Visual Engine (Three.js) ---
+        // --- 1. VISUAL ENGINE (The Magic) ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x000000, 0.02);
+
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 14;
+        camera.position.z = 15;
+
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // --- Texture ---
+        // --- Spark Texture ---
         const canvas = document.createElement('canvas');
         canvas.width = 64; canvas.height = 64;
         const ctx = canvas.getContext('2d');
         const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-        grad.addColorStop(0.15, 'rgba(255, 220, 100, 1)');
-        grad.addColorStop(0.4, 'rgba(255, 100, 0, 0.5)');
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = grad; ctx.fillRect(0,0,64,64);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');      
+        grad.addColorStop(0.2, 'rgba(255, 200, 50, 1)');     
+        grad.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)');    
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');           
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 64, 64);
         const sparkTexture = new THREE.CanvasTexture(canvas);
 
-        // --- Particle System ---
-        const COUNT = 8000;
+        // --- Particle Physics System ---
+        const COUNT = 5000;
         const geo = new THREE.BufferGeometry();
         const positions = new Float32Array(COUNT * 3);
-        const velocities = new Float32Array(COUNT * 3);
-        const life = new Float32Array(COUNT);
-        const RING_RADIUS = 5.0;
-
-        // Init Particles
+        const data = new Float32Array(COUNT * 3); // x=speed, y=angle_on_ring, z=radius_offset
+        
         for(let i=0; i<COUNT; i++) {
-            resetParticle(i);
-            life[i] = Math.random(); 
-            updateParticlePhysics(i, 2.0); // Pre-warm
+            positions[i*3] = 9999; // Start hidden
+            positions[i*3+1] = 9999;
+            positions[i*3+2] = 0;
+
+            data[i*3] = 2 + Math.random() * 4;       // Speed
+            data[i*3+1] = Math.random() * Math.PI * 2; // Angle
+            data[i*3+2] = (Math.random() - 0.5) * 1.0; // Thickness
         }
-
-        function resetParticle(i) {
-            const idx = i * 3;
-            const angle = Math.random() * Math.PI * 2;
-            
-            // Start on Ring
-            positions[idx] = Math.cos(angle) * RING_RADIUS;
-            positions[idx+1] = Math.sin(angle) * RING_RADIUS;
-            positions[idx+2] = (Math.random() - 0.5) * 0.5;
-            
-            // Tangential Velocity
-            const speed = 0.2 + Math.random() * 0.3;
-            velocities[idx] = (-Math.sin(angle) * speed) + (Math.cos(angle) * 0.05); 
-            velocities[idx+1] = (Math.cos(angle) * speed) + (Math.sin(angle) * 0.05);
-            velocities[idx+2] = (Math.random() - 0.5) * 0.05;
-
-            life[i] = 1.0;
-        }
-
-        function updateParticlePhysics(i, speedMult) {
-            const idx = i * 3;
-            positions[idx] += velocities[idx] * speedMult;
-            positions[idx+1] += velocities[idx+1] * speedMult;
-            positions[idx+2] += velocities[idx+2] * speedMult;
-        }
-
+        
         geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        const colors = new Float32Array(COUNT * 3);
-        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geo.setAttribute('particleData', new THREE.BufferAttribute(data, 3));
 
         const mat = new THREE.PointsMaterial({
-            size: 0.35, map: sparkTexture, transparent: true, opacity: 1.0,
-            vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false
+            size: 0.35,
+            map: sparkTexture,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            color: 0xffaa00
         });
-        const system = new THREE.Points(geo, mat);
-        scene.add(system);
 
-        // Void Center
-        const voidGeo = new THREE.CircleGeometry(RING_RADIUS - 0.2, 64);
-        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-        const voidMesh = new THREE.Mesh(voidGeo, voidMat);
-        voidMesh.position.z = 0.1;
-        scene.add(voidMesh);
+        const sparks = new THREE.Points(geo, mat);
+        scene.add(sparks);
 
-        // --- 2. GLOBAL STATE ---
-        let GLOBAL_SPEED = 1.0;
-        let TARGET_SPEED = 1.0;
+        // --- The Portal Void (Center Black Hole) ---
+        const voidGeo = new THREE.IcosahedronGeometry(1, 1);
+        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent:true, opacity:0 });
+        const portalVoid = new THREE.Mesh(voidGeo, voidMat);
+        scene.add(portalVoid);
 
-        // UI Elements
-        const knobRotator = document.getElementById('knob-rotator');
-        const speedVal = document.getElementById('speed-val');
-        const statusText = document.getElementById('status-text');
+        // --- GAME STATE ---
+        const State = {
+            radius: 0,          // Current visual radius
+            targetRadius: 0,    // Where we want to be
+            charge: 0,          // 0 to 100 (Progress of the spell)
+            maxRadius: 6.5
+        };
 
-        function updateUI(speed) {
-            speedVal.innerText = speed.toFixed(2) + "x";
-            
-            // Visual Rotation (-135deg to +135deg) based on speed 0 to 5
-            const rot = (speed - 1) * 45; 
-            knobRotator.style.transform = `rotate(${rot}deg)`;
-
-            // Color Logic
-            let color = '#fff';
-            if (speed > 2.5) color = '#ff3333'; // Red
-            else if (speed < 0.5) color = '#00ccff'; // Blue
-            else color = '#ffaa00'; // Orange
-
-            speedVal.style.color = color;
-            knobRotator.style.borderColor = color;
-        }
-
-        // --- 3. Animation Loop ---
+        // --- ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
 
-            // Smoothly interpolate speed
-            GLOBAL_SPEED += (TARGET_SPEED - GLOBAL_SPEED) * 0.1;
-            updateUI(GLOBAL_SPEED);
+            // 1. Smoothly interpolate radius based on charge
+            // If charge increases, radius grows. If charge drops, radius shrinks.
+            State.targetRadius = (State.charge / 100) * State.maxRadius;
+            State.radius += (State.targetRadius - State.radius) * 0.1;
 
-            system.rotation.z -= 0.005 * GLOBAL_SPEED;
+            // 2. Void Animation
+            portalVoid.scale.setScalar(State.radius * 0.85);
+            portalVoid.material.opacity = Math.min(1, State.radius / 2);
+            portalVoid.rotation.y += 0.02;
+            
+            // 3. Spin the sparks ring
+            sparks.rotation.z -= 0.05;
 
-            const pos = geo.attributes.position.array;
-            const col = geo.attributes.color.array;
+            // 4. Particle Update
+            const pos = sparks.geometry.attributes.position.array;
+            const pData = sparks.geometry.attributes.particleData.array;
 
             for(let i=0; i<COUNT; i++) {
-                const idx = i * 3;
+                const idx = i*3;
+                
+                // Move particle along the ring
+                pData[idx+1] += pData[idx] * 0.01; // angle += speed
+                const angle = pData[idx+1];
+                
+                // Calculate Radius: Base Radius + Jitter
+                const r = State.radius + pData[idx+2]; 
 
-                // Physics update
-                pos[idx] += velocities[idx] * GLOBAL_SPEED;
-                pos[idx+1] += velocities[idx+1] * GLOBAL_SPEED;
-                pos[idx+2] += velocities[idx+2] * GLOBAL_SPEED;
-
-                // Life Decay
-                const decayBase = 0.015 + Math.random() * 0.01;
-                life[i] -= decayBase * GLOBAL_SPEED; 
-
-                // Color Logic (Temperature)
-                if (life[i] > 0.9) {
-                    col[idx] = 1.0; col[idx+1] = 1.0; col[idx+2] = 0.8;
-                } else if (life[i] > 0.6) {
-                    col[idx] = 1.0; col[idx+1] = 0.8; col[idx+2] = 0.2;
-                } else if (life[i] > 0.3) {
-                    col[idx] = 1.0; col[idx+1] = 0.4; col[idx+2] = 0.0;
+                // ONLY render if the portal is actually open
+                if (State.radius > 0.2) {
+                    // Tangential Sparks Logic (The "Buzzsaw" look)
+                    // We add random noise to X/Y to make it look like chaotic fire
+                    pos[idx] = Math.cos(angle) * r + (Math.random()-0.5)*0.2;
+                    pos[idx+1] = Math.sin(angle) * r + (Math.random()-0.5)*0.2;
+                    pos[idx+2] = (Math.random() - 0.5) * 0.5;
                 } else {
-                    col[idx] = 0.8 * life[i]; col[idx+1] = 0.0; col[idx+2] = 0.0;
-                }
-
-                if (life[i] <= 0) {
-                    resetParticle(i);
+                    pos[idx] = 9999; // Hide particle
                 }
             }
-
-            geo.attributes.position.needsUpdate = true;
-            geo.attributes.color.needsUpdate = true;
-
+            
+            sparks.geometry.attributes.position.needsUpdate = true;
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 4. AI & Camera (The Controller) ---
-        const videoElement = document.getElementById('input-video');
+        // --- 2. AI & GESTURE LOGIC ---
         
+        const videoElement = document.getElementById('input-video');
+        const statusText = document.getElementById('status-text');
+        const uiRing = document.getElementById('progress-circle');
+        
+        let lastAngle = null;
+        let signalLossTimer = null;
+
+        // Calculate angle of finger relative to screen center (0.5, 0.5)
+        function getAngle(x, y) {
+            return Math.atan2(y - 0.5, x - 0.5);
+        }
+
+        log("DOWNLOADING NEURAL NETWORKS...");
         const hands = new Hands({locateFile: (file) => {
             return `https://unpkg.com/@mediapipe/hands/${file}`;
         }});
 
         hands.setOptions({
             maxNumHands: 1,
-            modelComplexity: 0, // Lite mode for speed
+            modelComplexity: 1,
             minDetectionConfidence: 0.5,
             minTrackingConfidence: 0.5
         });
@@ -276,57 +240,90 @@
         hands.onResults(results => {
             if(!isInit) {
                 isInit = true;
-                document.getElementById('loader').style.display = 'none';
-                document.getElementById('controller').style.opacity = 1;
+                document.getElementById('loader').style.opacity = 0;
+                setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
             }
 
             if (results.multiHandLandmarks.length > 0) {
+                if (signalLossTimer) clearTimeout(signalLossTimer);
+
                 const lm = results.multiHandLandmarks[0];
+                const tip = lm[8]; // Index Finger Tip
                 
-                // --- CONTROL LOGIC ---
-                // We use the Y position of the Wrist (landmark 0) or Middle Finger Knuckle (9)
-                // Y goes from 0.0 (Top) to 1.0 (Bottom)
-                const handY = lm[9].y;
+                // 1. Calculate Rotation
+                const currentAngle = getAngle(tip.x, tip.y);
+                
+                if (lastAngle !== null) {
+                    let delta = currentAngle - lastAngle;
+                    
+                    // Fix Wrap-around (3.14 -> -3.14)
+                    if (delta > Math.PI) delta -= Math.PI * 2;
+                    if (delta < -Math.PI) delta += Math.PI * 2;
+                    
+                    // 2. ADD TO CHARGE
+                    // If delta is significant (moving), add to charge
+                    // We use absolute value so Clockwise OR Counter-clockwise works
+                    // (Doctor Strange usually goes Clockwise, but let's be user friendly)
+                    if (Math.abs(delta) > 0.05 && Math.abs(delta) < 1.0) {
+                        State.charge += Math.abs(delta) * 5.0; // Multiplier for sensitivity
+                    }
+                }
+                lastAngle = currentAngle;
 
-                // Map Y to Speed
-                // Top (0.2) -> Speed 5.0
-                // Bottom (0.8) -> Speed 0.0
+                // 3. UI & State Updates
+                State.charge = Math.min(State.charge, 100); // Cap at 100%
                 
-                // Clamp Y between 0.2 and 0.8 to ignore extremes
-                const clampedY = Math.max(0.2, Math.min(handY, 0.8));
-                
-                // Map range: 
-                // (0.8 - 0.2) = 0.6 range.
-                // 1.0 - (y - 0.2) / 0.6
-                
-                const normalized = 1.0 - ((clampedY - 0.2) / 0.6);
-                
-                // Curve the output for better feeling (Exponential)
-                TARGET_SPEED = normalized * 5.0;
+                // Decay charge slightly if not moving fast enough (Simulate effort)
+                // But don't decay if fully open (optional, here we decay to require constant focus)
+                // State.charge *= 0.99; 
 
-                // Text Feedback
-                if (TARGET_SPEED > 2.0) statusText.innerText = "ACCELERATING TIME";
-                else if (TARGET_SPEED < 0.2) statusText.innerText = "TIME FROZEN";
-                else statusText.innerText = "NORMAL FLOW";
-                statusText.style.color = "#fff";
+                const percent = Math.floor(State.charge);
+                const strokeOffset = 377 - (377 * (State.charge / 100));
+                uiRing.style.strokeDashoffset = strokeOffset;
+
+                // 4. Feedback Text
+                if (State.charge > 90) {
+                    statusText.innerText = "PORTAL STABLE - KEEP SPINNING";
+                    statusText.style.color = "#00ff88";
+                    statusText.style.borderColor = "#00ff88";
+                } else if (State.charge > 5) {
+                    statusText.innerText = `CONJURING... ${percent}%`;
+                    statusText.style.color = "#f5a623";
+                    statusText.style.borderColor = "#f5a623";
+                } else {
+                    statusText.innerText = "DRAW CIRCLES WITH INDEX FINGER";
+                    statusText.style.color = "#fff";
+                    statusText.style.borderColor = "rgba(255,255,255,0.3)";
+                }
 
             } else {
-                // Hand lost -> Slow down to normal
-                TARGET_SPEED = 1.0;
-                statusText.innerText = "SIGNAL LOST - NORMALIZING";
-                statusText.style.color = "#555";
+                // Hand Lost - Close Portal
+                if (!signalLossTimer) {
+                    signalLossTimer = setTimeout(() => {
+                        lastAngle = null;
+                        
+                        // Rapid Decay when hand is lost
+                        State.charge *= 0.9;
+                        if(State.charge < 1) State.charge = 0;
+
+                        const strokeOffset = 377 - (377 * (State.charge / 100));
+                        uiRing.style.strokeDashoffset = strokeOffset;
+
+                        statusText.innerText = "FOCUS LOST - PORTAL CLOSING";
+                        statusText.style.color = "#555";
+                        statusText.style.borderColor = "#333";
+                    }, 100);
+                }
             }
         });
 
         const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
-            },
+            onFrame: async () => await hands.send({image: videoElement}),
             width: 640, height: 480, facingMode: 'user'
         });
         
         cameraUtils.start().catch(e => {
-            log("Error: Camera Access Denied");
+            log("Camera Error: Check Permissions/HTTPS");
         });
 
         window.addEventListener('resize', () => {
