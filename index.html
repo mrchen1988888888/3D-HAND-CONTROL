@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Strange: Diagnostic Mode</title>
+    <title>Doctor Strange: Local Spin</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
         
@@ -13,38 +13,34 @@
             transform: scaleX(-1);
         }
 
-        /* DIAGNOSTIC CONSOLE */
+        /* LOG BOX */
         #console-container {
-            position: absolute; top: 10px; left: 10px; width: 300px; height: 200px;
-            background: rgba(0, 20, 0, 0.9); border: 1px solid #00ff88;
-            padding: 10px; overflow-y: auto; z-index: 100;
-            font-size: 11px; color: #00ff88;
+            position: absolute; top: 10px; left: 10px; width: 250px; 
+            background: rgba(0, 0, 0, 0.8); border: 1px solid #00ff88;
+            padding: 10px; z-index: 100; font-size: 10px; color: #00ff88;
             pointer-events: none;
         }
-        .log-line { margin-bottom: 2px; border-bottom: 1px solid rgba(0,255,136,0.1); }
-        .log-warn { color: #ffaa00; }
-        .log-err { color: #ff3333; font-weight: bold; }
 
-        /* Finger Tracker Debugger */
-        #finger-tracker {
-            position: absolute; width: 20px; height: 20px;
-            background: rgba(255, 0, 0, 0.8); border: 2px solid white;
-            border-radius: 50%; pointer-events: none; z-index: 50;
-            display: none; /* Hidden until hand found */
-            transform: translate(-50%, -50%);
-            box-shadow: 0 0 10px red;
+        /* TRACKING DEBUGGERS */
+        .tracker-dot {
+            position: absolute; width: 15px; height: 15px; border-radius: 50%;
+            pointer-events: none; z-index: 50; transform: translate(-50%, -50%);
+            display: none;
         }
+        #tip-tracker { background: red; border: 2px solid white; }   /* Index Finger */
+        #wrist-tracker { background: blue; border: 2px solid white; } /* Wrist */
 
         /* HUD */
         #hud-layer {
             position: absolute; bottom: 40px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
         }
         .spell-status {
-            color: #fff; font-size: 14px; background: rgba(0,0,0,0.7); 
-            padding: 8px 20px; border-radius: 20px; border: 1px solid #555;
+            color: #fff; font-size: 16px; background: rgba(0,0,0,0.7); 
+            padding: 10px 25px; border-radius: 20px; border: 1px solid #ffaa00;
+            font-weight: bold;
         }
 
-        /* Loader */
+        /* Spinner */
         #loader {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: #000; z-index: 90;
@@ -56,7 +52,6 @@
             border-top: 3px solid #00ff88; border-radius: 50%; 
             animation: spin 1s infinite linear;
         }
-
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
@@ -64,13 +59,14 @@
 
     <video id="input-video" playsinline webkit-playsinline></video>
     
-    <!-- Debug Console -->
     <div id="console-container">
-        <div class="log-line">SYSTEM BOOT...</div>
+        <div>SYSTEM STATUS: ONLINE</div>
+        <div id="math-debug" style="color:white; margin-top:5px;">Waiting for hand...</div>
     </div>
 
-    <!-- Visual Tracker for your finger -->
-    <div id="finger-tracker"></div>
+    <!-- Visual Trackers to verify math -->
+    <div id="tip-tracker" class="tracker-dot"></div>
+    <div id="wrist-tracker" class="tracker-dot"></div>
 
     <div id="loader"><div class="spinner"></div></div>
 
@@ -85,23 +81,9 @@
     <script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- LOGGER UTILITY ---
-        const consoleBox = document.getElementById('console-container');
-        function log(msg, type='info') {
-            const div = document.createElement('div');
-            div.className = 'log-line';
-            const time = new Date().toLocaleTimeString().split(' ')[0];
-            div.innerHTML = `<span style="opacity:0.5">[${time}]</span> ${msg}`;
-            if(type==='err') div.className += ' log-err';
-            if(type==='warn') div.className += ' log-warn';
-            consoleBox.appendChild(div);
-            consoleBox.scrollTop = consoleBox.scrollHeight;
-        }
+        const debugBox = document.getElementById('math-debug');
 
-        window.onerror = function(msg) { log("JS ERROR: " + msg, 'err'); }
-
-        // --- 1. THREE.JS ENGINE ---
-        log("Starting Graphics Engine...");
+        // --- 1. VISUAL ENGINE ---
         const scene = new THREE.Scene();
         scene.fog = new THREE.FogExp2(0x000000, 0.04);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
@@ -126,13 +108,18 @@
         const vel = new Float32Array(COUNT*3);
         const life = new Float32Array(COUNT);
         
-        for(let i=0; i<COUNT; i++) {
-            pos[i*3]=9999; life[i]=0;
-        }
+        for(let i=0; i<COUNT; i++) { pos[i*3]=9999; life[i]=0; }
         geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
         const mat = new THREE.PointsMaterial({size:0.4, map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, color:0xffaa00});
         const sys = new THREE.Points(geo, mat);
         scene.add(sys);
+
+        // The Void
+        const voidGeo = new THREE.CircleGeometry(1, 32);
+        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const voidMesh = new THREE.Mesh(voidGeo, voidMat);
+        voidMesh.position.z = 0.1;
+        scene.add(voidMesh);
 
         // State
         const State = { r:0, tr:0, charge:0 };
@@ -141,6 +128,9 @@
             requestAnimationFrame(animate);
             State.r += (State.tr - State.r)*0.1;
             sys.rotation.z -= 0.05;
+            
+            // Void Animation
+            voidMesh.scale.setScalar(State.r * 0.9);
 
             const p = geo.attributes.position.array;
             for(let i=0; i<COUNT; i++) {
@@ -149,22 +139,18 @@
                 
                 if(life[i] <= 0) {
                     if(State.r > 0.2) {
-                        // Respawn
                         const a = Math.random()*Math.PI*2;
                         const r = State.r + (Math.random()-0.5)*0.5;
                         p[idx] = Math.cos(a)*r;
                         p[idx+1] = Math.sin(a)*r;
                         p[idx+2] = (Math.random()-0.5);
                         
-                        // Tangential Velocity
                         const s = 0.1 + Math.random()*0.2;
                         vel[idx] = -Math.sin(a)*s;
                         vel[idx+1] = Math.cos(a)*s;
                         vel[idx+2] = (Math.random()-0.5)*0.05;
                         life[i] = 1;
-                    } else {
-                        p[idx] = 9999;
-                    }
+                    } else { p[idx] = 9999; }
                 } else {
                     p[idx] += vel[idx];
                     p[idx+1] += vel[idx+1];
@@ -176,108 +162,109 @@
         }
         animate();
 
-        // --- 2. AI LOGIC ---
-        log("Downloading AI Models (VPN Required)...");
-        
+        // --- 2. AI LOGIC (FIXED) ---
         const videoEl = document.getElementById('input-video');
         const statusText = document.getElementById('status-text');
-        const fingerTracker = document.getElementById('finger-tracker');
+        
+        // Debug Trackers
+        const tipDot = document.getElementById('tip-tracker');
+        const wristDot = document.getElementById('wrist-tracker');
+
         let lastAng = null;
         let lossTimer = null;
 
-        const hands = new Hands({locateFile: (file) => {
-            log(`Fetching: ${file}`);
-            return `https://unpkg.com/@mediapipe/hands/${file}`;
-        }});
-
-        hands.setOptions({
-            maxNumHands: 1,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
-        });
+        const hands = new Hands({locateFile: (file) => `https://unpkg.com/@mediapipe/hands/${file}`});
+        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
 
         let isLoaded = false;
         hands.onResults(res => {
             if(!isLoaded) {
                 isLoaded = true;
-                log("AI CORE LOADED!", 'success');
                 document.getElementById('loader').style.opacity = 0;
                 setTimeout(()=>document.getElementById('loader').style.display='none', 500);
             }
 
             if(res.multiHandLandmarks.length > 0) {
                 const lm = res.multiHandLandmarks[0];
-                const tip = lm[8]; // Index finger
                 
-                // DEBUG: Show finger position
-                fingerTracker.style.display = 'block';
-                // Convert AI coords (0-1) to Screen coords (px)
-                // Note: Video is mirrored using CSS scaleX(-1), but coordinates come raw.
-                // We need to flip X to match the visual mirror.
-                const x = (1 - tip.x) * window.innerWidth; 
-                const y = tip.y * window.innerHeight;
-                fingerTracker.style.left = x + 'px';
-                fingerTracker.style.top = y + 'px';
+                // --- NEW MATH: Local Rotation ---
+                // We calculate angle between WRIST (0) and INDEX TIP (8)
+                const wrist = lm[0];
+                const tip = lm[8];
 
-                const ang = Math.atan2(y - window.innerHeight/2, x - window.innerWidth/2);
+                // Convert to screen coordinates for dots
+                // Flip X because video is mirrored
+                const tipX = (1 - tip.x) * window.innerWidth;
+                const tipY = tip.y * window.innerHeight;
+                const wristX = (1 - wrist.x) * window.innerWidth;
+                const wristY = wrist.y * window.innerHeight;
+
+                // Move dots
+                tipDot.style.display = 'block';
+                wristDot.style.display = 'block';
+                tipDot.style.left = tipX + 'px';
+                tipDot.style.top = tipY + 'px';
+                wristDot.style.left = wristX + 'px';
+                wristDot.style.top = wristY + 'px';
+
+                // Calculate Angle relative to WRIST
+                // dx, dy
+                const dx = tipX - wristX;
+                const dy = tipY - wristY;
+                const ang = Math.atan2(dy, dx);
 
                 if(lastAng !== null) {
                     let d = ang - lastAng;
+                    // Handle wrap around PI
                     if(d > Math.PI) d -= Math.PI*2;
                     if(d < -Math.PI) d += Math.PI*2;
                     
-                    // Increased Sensitivity
-                    if(Math.abs(d) > 0.02) { 
-                        State.charge += Math.abs(d) * 10.0;
+                    // Show delta in debug box
+                    debugBox.innerText = `Delta: ${d.toFixed(2)}`;
+
+                    // Threshold: Ignore tiny jitters, accept real movement
+                    if(Math.abs(d) > 0.05 && Math.abs(d) < 1.5) { 
+                        State.charge += Math.abs(d) * 15.0; // Boosted sensitivity
                     }
                 }
                 lastAng = ang;
                 State.charge = Math.min(State.charge, 100);
-                
-                // Update Radius
                 State.tr = (State.charge / 100) * 6;
 
-                if(State.charge > 10) {
+                // Text Feedback
+                if(State.charge > 15) {
                     statusText.innerText = `OPENING... ${Math.floor(State.charge)}%`;
                     statusText.style.color = "#ffaa00";
                 } else {
-                    statusText.innerText = "DETECTED: SPIN FINGER NOW";
+                    statusText.innerText = "SPIN FINGER AROUND WRIST";
                     statusText.style.color = "#00ff88";
                 }
 
                 if(lossTimer) clearTimeout(lossTimer);
 
             } else {
-                // Hand Lost
-                fingerTracker.style.display = 'none';
+                tipDot.style.display = 'none';
+                wristDot.style.display = 'none';
+                debugBox.innerText = "No Hand";
+                
                 if(!lossTimer) {
                     lossTimer = setTimeout(() => {
                         lastAng = null;
                         State.charge *= 0.9;
                         if(State.charge < 1) State.charge = 0;
                         State.tr = 0;
-                        statusText.innerText = "NO HAND DETECTED";
+                        statusText.innerText = "SIGNAL LOST";
                         statusText.style.color = "#555";
                     }, 200);
                 }
             }
         });
 
-        log("Requesting Camera...");
         const cam = new Camera(videoEl, {
             onFrame: async () => await hands.send({image: videoEl}),
             width: 640, height: 480, facingMode: 'user'
         });
-        
-        cam.start()
-           .then(()=> log("Camera Active. Waiting for Hand..."))
-           .catch(e=> log(`CAM ERROR: ${e.message}`, 'err'));
-
-        // Watchdog
-        setTimeout(() => {
-            if(!isLoaded) log("TIMEOUT: Model download stuck. Check Network.", 'err');
-        }, 15000);
+        cam.start();
 
         window.onresize = () => {
             camera.aspect = window.innerWidth/window.innerHeight;
