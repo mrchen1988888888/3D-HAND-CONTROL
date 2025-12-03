@@ -3,92 +3,127 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Strange: Local Spin</title>
+    <title>Dr. Strange: Force Start</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
         
+        /* Camera is now VISIBLE (faint) for debugging */
         #input-video { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            opacity: 0; pointer-events: none; z-index: -1; 
+            opacity: 0.3; /* Visible so you know camera is on */
             transform: scaleX(-1);
+            object-fit: cover;
         }
 
-        /* LOG BOX */
-        #console-container {
-            position: absolute; top: 10px; left: 10px; width: 250px; 
-            background: rgba(0, 0, 0, 0.8); border: 1px solid #00ff88;
-            padding: 10px; z-index: 100; font-size: 10px; color: #00ff88;
-            pointer-events: none;
+        /* Giant Start Button */
+        #start-btn {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            z-index: 200; padding: 20px 40px; font-size: 20px; font-weight: bold;
+            background: #f5a623; color: #000; border: none; border-radius: 10px;
+            box-shadow: 0 0 20px #f5a623; cursor: pointer;
         }
 
-        /* TRACKING DEBUGGERS */
-        .tracker-dot {
-            position: absolute; width: 15px; height: 15px; border-radius: 50%;
-            pointer-events: none; z-index: 50; transform: translate(-50%, -50%);
-            display: none;
+        /* Debug Console */
+        #console {
+            position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.8);
+            color: #0f0; font-size: 12px; padding: 10px; z-index: 150;
+            max-height: 150px; overflow-y: auto; pointer-events: none;
         }
-        #tip-tracker { background: red; border: 2px solid white; }   /* Index Finger */
-        #wrist-tracker { background: blue; border: 2px solid white; } /* Wrist */
 
         /* HUD */
         #hud-layer {
-            position: absolute; bottom: 40px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
+            position: absolute; bottom: 50px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
         }
-        .spell-status {
-            color: #fff; font-size: 16px; background: rgba(0,0,0,0.7); 
-            padding: 10px 25px; border-radius: 20px; border: 1px solid #ffaa00;
-            font-weight: bold;
+        .status-box {
+            display: inline-block; background: rgba(0,0,0,0.8); border: 1px solid #f5a623;
+            color: #f5a623; padding: 10px 20px; border-radius: 30px; font-size: 16px;
+            box-shadow: 0 0 15px rgba(245, 166, 35, 0.3);
         }
 
-        /* Spinner */
-        #loader {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 90;
-            display: flex; align-items: center; justify-content: center;
-            transition: opacity 0.5s;
-        }
-        .spinner {
-            width: 40px; height: 40px; border: 3px solid #333; 
-            border-top: 3px solid #00ff88; border-radius: 50%; 
-            animation: spin 1s infinite linear;
-        }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        /* Trackers */
+        .dot { position: absolute; width: 20px; height: 20px; border-radius: 50%; z-index: 100; transform: translate(-50%, -50%); display: none; }
+        #finger { background: red; border: 2px solid white; box-shadow: 0 0 10px red; }
+        #wrist { background: blue; border: 2px solid white; }
+
     </style>
 </head>
 <body>
 
-    <video id="input-video" playsinline webkit-playsinline></video>
+    <video id="input-video" playsinline></video>
     
-    <div id="console-container">
-        <div>SYSTEM STATUS: ONLINE</div>
-        <div id="math-debug" style="color:white; margin-top:5px;">Waiting for hand...</div>
-    </div>
+    <div id="console">Waiting for user start...</div>
+    
+    <button id="start-btn" onclick="startSystem()">TAP TO START</button>
 
-    <!-- Visual Trackers to verify math -->
-    <div id="tip-tracker" class="tracker-dot"></div>
-    <div id="wrist-tracker" class="tracker-dot"></div>
-
-    <div id="loader"><div class="spinner"></div></div>
+    <div id="finger" class="dot"></div>
+    <div id="wrist" class="dot"></div>
 
     <div id="hud-layer">
-        <div class="spell-status" id="status-text">INITIALIZING...</div>
+        <div class="status-box" id="status">SYSTEM STANDBY</div>
     </div>
 
-    <!-- SOURCES -->
+    <!-- SOURCES: Using jsDelivr which is often better for WASM on iOS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://unpkg.com/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://unpkg.com/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
     <script>
-        const debugBox = document.getElementById('math-debug');
+        const logEl = document.getElementById('console');
+        function log(msg) { 
+            logEl.innerHTML += `<div>> ${msg}</div>`; 
+            logEl.scrollTop = logEl.scrollHeight;
+        }
 
-        // --- 1. VISUAL ENGINE ---
+        let hands;
+        let cameraUtils;
+        
+        async function startSystem() {
+            document.getElementById('start-btn').style.display = 'none';
+            log("Initializing...");
+
+            // 1. Setup AI
+            log("Configuring MediaPipe (Source: jsDelivr)...");
+            hands = new Hands({locateFile: (file) => {
+                log(`Fetching: ${file}`);
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            hands.onResults(onResults);
+
+            // 2. Setup Camera
+            const videoElement = document.getElementById('input-video');
+            log("Requesting Camera...");
+            
+            try {
+                cameraUtils = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({image: videoElement});
+                    },
+                    width: 640, height: 480, facingMode: 'user'
+                });
+                
+                await cameraUtils.start();
+                log("Camera Active. Downloading Model (Wait 10-20s)...");
+                document.getElementById('status').innerText = "DOWNLOADING AI...";
+            } catch (e) {
+                log("CAMERA ERROR: " + e.message);
+                alert("Camera failed. Check permissions.");
+            }
+        }
+
+        // --- VISUAL ENGINE ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.04);
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
         camera.position.z = 14;
-        const renderer = new THREE.WebGLRenderer({ antialias: false });
+        const renderer = new THREE.WebGLRenderer({alpha: true, antialias: false});
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
@@ -97,64 +132,62 @@
         const cvs = document.createElement('canvas'); cvs.width=32; cvs.height=32;
         const ctx = cvs.getContext('2d');
         const gr = ctx.createRadialGradient(16,16,0,16,16,16);
-        gr.addColorStop(0,'white'); gr.addColorStop(0.3,'#ffaa00'); gr.addColorStop(1,'transparent');
+        gr.addColorStop(0,'white'); gr.addColorStop(0.4,'orange'); gr.addColorStop(1,'transparent');
         ctx.fillStyle=gr; ctx.fillRect(0,0,32,32);
         const tex = new THREE.CanvasTexture(cvs);
 
         // Particles
-        const COUNT = 5000;
+        const COUNT=4000;
         const geo = new THREE.BufferGeometry();
         const pos = new Float32Array(COUNT*3);
         const vel = new Float32Array(COUNT*3);
         const life = new Float32Array(COUNT);
-        
         for(let i=0; i<COUNT; i++) { pos[i*3]=9999; life[i]=0; }
         geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-        const mat = new THREE.PointsMaterial({size:0.4, map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, color:0xffaa00});
-        const sys = new THREE.Points(geo, mat);
+        const sys = new THREE.Points(geo, new THREE.PointsMaterial({
+            size:0.5, map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false
+        }));
         scene.add(sys);
 
-        // The Void
-        const voidGeo = new THREE.CircleGeometry(1, 32);
-        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
-        const voidMesh = new THREE.Mesh(voidGeo, voidMat);
+        // Void
+        const voidMesh = new THREE.Mesh(
+            new THREE.CircleGeometry(1, 32),
+            new THREE.MeshBasicMaterial({color:0x000000})
+        );
         voidMesh.position.z = 0.1;
         scene.add(voidMesh);
 
-        // State
-        const State = { r:0, tr:0, charge:0 };
+        // Logic
+        let State = { r:0, tr:0, charge:0 };
+        let loaded = false;
+        let lastAng = null;
 
         function animate() {
             requestAnimationFrame(animate);
             State.r += (State.tr - State.r)*0.1;
-            sys.rotation.z -= 0.05;
             
-            // Void Animation
-            voidMesh.scale.setScalar(State.r * 0.9);
+            // Visual Updates
+            voidMesh.scale.setScalar(State.r);
+            sys.rotation.z -= 0.05;
 
             const p = geo.attributes.position.array;
             for(let i=0; i<COUNT; i++) {
-                const idx = i*3;
+                const idx=i*3;
                 life[i] -= 0.02 + Math.random()*0.01;
                 
-                if(life[i] <= 0) {
+                if(life[i]<=0) {
                     if(State.r > 0.2) {
-                        const a = Math.random()*Math.PI*2;
+                        // Spawn
+                        const a = Math.random()*6.28;
                         const r = State.r + (Math.random()-0.5)*0.5;
-                        p[idx] = Math.cos(a)*r;
-                        p[idx+1] = Math.sin(a)*r;
-                        p[idx+2] = (Math.random()-0.5);
-                        
-                        const s = 0.1 + Math.random()*0.2;
-                        vel[idx] = -Math.sin(a)*s;
-                        vel[idx+1] = Math.cos(a)*s;
-                        vel[idx+2] = (Math.random()-0.5)*0.05;
-                        life[i] = 1;
-                    } else { p[idx] = 9999; }
+                        p[idx] = Math.cos(a)*r; p[idx+1] = Math.sin(a)*r; p[idx+2] = 0;
+                        // Velocity
+                        const s = 0.15;
+                        vel[idx] = -Math.sin(a)*s; vel[idx+1] = Math.cos(a)*s; vel[idx+2] = (Math.random()-0.5)*0.1;
+                        life[i]=1;
+                    } else { p[idx]=9999; }
                 } else {
-                    p[idx] += vel[idx];
-                    p[idx+1] += vel[idx+1];
-                    p[idx+2] += vel[idx+2];
+                    p[idx]+=vel[idx]; p[idx+1]+=vel[idx+1]; p[idx+2]+=vel[idx+2];
                 }
             }
             geo.attributes.position.needsUpdate=true;
@@ -162,115 +195,79 @@
         }
         animate();
 
-        // --- 2. AI LOGIC (FIXED) ---
-        const videoEl = document.getElementById('input-video');
-        const statusText = document.getElementById('status-text');
-        
-        // Debug Trackers
-        const tipDot = document.getElementById('tip-tracker');
-        const wristDot = document.getElementById('wrist-tracker');
+        // --- AI RESULTS ---
+        const fDot = document.getElementById('finger');
+        const wDot = document.getElementById('wrist');
+        const status = document.getElementById('status');
 
-        let lastAng = null;
-        let lossTimer = null;
-
-        const hands = new Hands({locateFile: (file) => `https://unpkg.com/@mediapipe/hands/${file}`});
-        hands.setOptions({ maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-
-        let isLoaded = false;
-        hands.onResults(res => {
-            if(!isLoaded) {
-                isLoaded = true;
-                document.getElementById('loader').style.opacity = 0;
-                setTimeout(()=>document.getElementById('loader').style.display='none', 500);
+        function onResults(res) {
+            if(!loaded) {
+                loaded = true;
+                log("AI LOADED! SYSTEM READY.");
+                status.innerText = "RAISE HAND";
+                status.style.color = "#fff";
+                status.style.borderColor = "#fff";
             }
 
             if(res.multiHandLandmarks.length > 0) {
                 const lm = res.multiHandLandmarks[0];
-                
-                // --- NEW MATH: Local Rotation ---
-                // We calculate angle between WRIST (0) and INDEX TIP (8)
                 const wrist = lm[0];
                 const tip = lm[8];
 
-                // Convert to screen coordinates for dots
-                // Flip X because video is mirrored
-                const tipX = (1 - tip.x) * window.innerWidth;
-                const tipY = tip.y * window.innerHeight;
-                const wristX = (1 - wrist.x) * window.innerWidth;
-                const wristY = wrist.y * window.innerHeight;
+                // Draw dots (Visual Debug)
+                fDot.style.display = 'block';
+                wDot.style.display = 'block';
+                
+                // Flip X coords because video is mirrored
+                const fx = (1-tip.x)*window.innerWidth;
+                const fy = tip.y*window.innerHeight;
+                const wx = (1-wrist.x)*window.innerWidth;
+                const wy = wrist.y*window.innerHeight;
 
-                // Move dots
-                tipDot.style.display = 'block';
-                wristDot.style.display = 'block';
-                tipDot.style.left = tipX + 'px';
-                tipDot.style.top = tipY + 'px';
-                wristDot.style.left = wristX + 'px';
-                wristDot.style.top = wristY + 'px';
+                fDot.style.left = fx+'px'; fDot.style.top = fy+'px';
+                wDot.style.left = wx+'px'; wDot.style.top = wy+'px';
 
-                // Calculate Angle relative to WRIST
-                // dx, dy
-                const dx = tipX - wristX;
-                const dy = tipY - wristY;
+                // Calculate Rotation
+                const dx = fx - wx;
+                const dy = fy - wy;
                 const ang = Math.atan2(dy, dx);
 
                 if(lastAng !== null) {
                     let d = ang - lastAng;
-                    // Handle wrap around PI
                     if(d > Math.PI) d -= Math.PI*2;
                     if(d < -Math.PI) d += Math.PI*2;
                     
-                    // Show delta in debug box
-                    debugBox.innerText = `Delta: ${d.toFixed(2)}`;
-
-                    // Threshold: Ignore tiny jitters, accept real movement
-                    if(Math.abs(d) > 0.05 && Math.abs(d) < 1.5) { 
-                        State.charge += Math.abs(d) * 15.0; // Boosted sensitivity
+                    if(Math.abs(d) > 0.05 && Math.abs(d) < 1.5) {
+                        State.charge += Math.abs(d) * 20; // Sensitivity
                     }
                 }
                 lastAng = ang;
                 State.charge = Math.min(State.charge, 100);
-                State.tr = (State.charge / 100) * 6;
+                State.tr = (State.charge/100) * 6;
 
-                // Text Feedback
-                if(State.charge > 15) {
-                    statusText.innerText = `OPENING... ${Math.floor(State.charge)}%`;
-                    statusText.style.color = "#ffaa00";
-                } else {
-                    statusText.innerText = "SPIN FINGER AROUND WRIST";
-                    statusText.style.color = "#00ff88";
+                if(State.charge > 10) {
+                    status.innerText = `OPENING... ${Math.floor(State.charge)}%`;
+                    status.style.color = "#f5a623";
+                    status.style.borderColor = "#f5a623";
                 }
-
-                if(lossTimer) clearTimeout(lossTimer);
 
             } else {
-                tipDot.style.display = 'none';
-                wristDot.style.display = 'none';
-                debugBox.innerText = "No Hand";
-                
-                if(!lossTimer) {
-                    lossTimer = setTimeout(() => {
-                        lastAng = null;
-                        State.charge *= 0.9;
-                        if(State.charge < 1) State.charge = 0;
-                        State.tr = 0;
-                        statusText.innerText = "SIGNAL LOST";
-                        statusText.style.color = "#555";
-                    }, 200);
-                }
+                fDot.style.display = 'none';
+                wDot.style.display = 'none';
+                lastAng = null;
+                State.charge *= 0.9;
+                State.tr = 0;
+                status.innerText = "NO HAND DETECTED";
+                status.style.color = "#555";
+                status.style.borderColor = "#333";
             }
-        });
-
-        const cam = new Camera(videoEl, {
-            onFrame: async () => await hands.send({image: videoEl}),
-            width: 640, height: 480, facingMode: 'user'
-        });
-        cam.start();
+        }
 
         window.onresize = () => {
             camera.aspect = window.innerWidth/window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        };
+        }
     </script>
 </body>
 </html>
