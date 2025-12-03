@@ -2,226 +2,281 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Doctor Strange: Tactile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dr. Strange: Dual Hand Control</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; touch-action: none; /* Prevent scrolling */ }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: monospace; }
         
-        #hud-layer {
-            position: absolute; bottom: 50px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
-            display: flex; flex-direction: column; align-items: center; gap: 10px;
-        }
-        
-        .spell-title {
-            color: #ffaa00; font-size: 24px; font-weight: 800; letter-spacing: 4px;
-            text-shadow: 0 0 20px rgba(255, 170, 0, 0.8); margin: 0;
-        }
-        
-        .spell-instruction {
-            color: #fff; font-size: 14px; background: rgba(20, 10, 0, 0.8); 
-            padding: 10px 25px; border-radius: 30px; border: 1px solid #ffaa00;
-            animation: pulse 2s infinite;
+        /* 1. 视频层 (半透明可见) */
+        #input-video { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            z-index: 1; transform: scaleX(-1); object-fit: cover;
+            opacity: 0.3; /* 让你可以看到自己 */
         }
 
-        /* Center Guide */
-        #guide-ring {
+        /* 2. 骨架绘制层 (调试用) */
+        #debug-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 2; pointer-events: none; transform: scaleX(-1);
+        }
+
+        /* 3. 3D 特效层 (最上层) */
+        #gl-canvas {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            z-index: 3; pointer-events: none;
+        }
+
+        /* HUD & UI */
+        #hud {
+            position: absolute; bottom: 30px; width: 100%; text-align: center; z-index: 10;
+        }
+        .status {
+            background: rgba(0, 0, 0, 0.8); color: #00ff88; padding: 10px 25px; 
+            border: 1px solid #00ff88; font-size: 16px; font-weight: bold; display: inline-block;
+            border-radius: 20px; text-transform: uppercase;
+        }
+
+        #start-btn {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 150px; height: 150px; border: 2px dashed rgba(255, 170, 0, 0.3);
-            border-radius: 50%; pointer-events: none; z-index: 5;
+            z-index: 999; padding: 20px 50px; font-size: 24px; font-weight: bold;
+            background: #ffaa00; color: #000; border: 4px solid white; border-radius: 15px;
+            cursor: pointer; box-shadow: 0 0 30px #ffaa00;
         }
 
-        /* Finger Trail */
-        .trail-dot {
-            position: absolute; width: 20px; height: 20px; background: #ffaa00;
-            border-radius: 50%; box-shadow: 0 0 15px #ffaa00;
-            pointer-events: none; transform: translate(-50%, -50%);
-            display: none; z-index: 20;
+        #loader {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 800; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
         }
-
-        @keyframes pulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
+        .spinner { width: 40px; height: 40px; border: 3px solid #333; border-top: 3px solid #ffaa00; border-radius: 50%; animation: spin 1s infinite linear; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div id="hud-layer">
-        <h1 class="spell-title">TACTILE MAGIC</h1>
-        <div class="spell-instruction" id="status-text">TOUCH SCREEN & SPIN CLOCKWISE</div>
+    <video id="input-video" playsinline></video>
+    <canvas id="debug-canvas"></canvas> <!-- 用于画手骨架 -->
+    
+    <div id="loader">
+        <div class="spinner"></div>
+        <div style="color:#ffaa00; margin-top:15px;">INITIALIZING AI...</div>
     </div>
 
-    <div id="guide-ring"></div>
-    <div id="trail" class="trail-dot"></div>
+    <button id="start-btn" onclick="init()">START SYSTEM</button>
 
-    <!-- Only Three.js (Fast & Reliable) -->
+    <div id="hud"><div class="status" id="status">STANDBY</div></div>
+
+    <!-- Libraries -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script> <!-- 画骨架工具 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- 1. VISUAL ENGINE ---
+        // --- 1. SETUP ---
+        const videoElement = document.getElementById('input-video');
+        const debugCanvas = document.getElementById('debug-canvas');
+        const debugCtx = debugCanvas.getContext('2d');
+        const statusText = document.getElementById('status');
+        
+        // --- 2. VISUAL ENGINE (Cinematic Physics) ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.03);
+        scene.fog = new THREE.FogExp2(0x000000, 0.05); // Dark fog
 
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 15;
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+        camera.position.z = 14;
 
-        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        const renderer = new THREE.WebGLRenderer({alpha: true, antialias: false});
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.domElement.id = 'gl-canvas';
         document.body.appendChild(renderer.domElement);
 
-        // --- 2. TEXTURES & PARTICLES ---
-        const canvas = document.createElement('canvas');
-        canvas.width = 32; canvas.height = 32;
-        const ctx = canvas.getContext('2d');
-        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-        grad.addColorStop(0, '#ffffff');   
-        grad.addColorStop(0.3, '#ffaa00');  
-        grad.addColorStop(1, 'transparent');
-        ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32);
-        const texture = new THREE.CanvasTexture(canvas);
+        // -- Texture (White Hot Spark) --
+        const cvs = document.createElement('canvas'); cvs.width=32; cvs.height=32;
+        const ctx = cvs.getContext('2d');
+        const gr = ctx.createRadialGradient(16,16,0,16,16,16);
+        gr.addColorStop(0,'#ffffff'); gr.addColorStop(0.2,'#ffaa00'); gr.addColorStop(0.5,'#ff4400'); gr.addColorStop(1,'transparent');
+        ctx.fillStyle=gr; ctx.fillRect(0,0,32,32);
+        const tex = new THREE.CanvasTexture(cvs);
 
-        const COUNT = 5000;
+        // -- Particle System --
+        const COUNT = 6000; // High density
         const geo = new THREE.BufferGeometry();
-        const positions = new Float32Array(COUNT * 3);
-        const data = new Float32Array(COUNT * 3); // x=speed, y=angle, z=radius_offset
-        
+        const pos = new Float32Array(COUNT*3);
+        const col = new Float32Array(COUNT*3);
+        const vel = new Float32Array(COUNT*3); // Store velocity
+        const life = new Float32Array(COUNT);  // Store life
+        const maxLife = new Float32Array(COUNT);
+
         for(let i=0; i<COUNT; i++) {
-            positions[i*3] = 9999; 
-            data[i*3] = 2 + Math.random() * 4;       // Speed
-            data[i*3+1] = Math.random() * Math.PI * 2; // Angle
-            data[i*3+2] = (Math.random() - 0.5) * 1.5; // Jitter
+            pos[i*3]=9999; life[i]=0; 
         }
         
-        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geo.setAttribute('data', new THREE.BufferAttribute(data, 3));
+        geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+        geo.setAttribute('color', new THREE.BufferAttribute(col,3));
 
         const mat = new THREE.PointsMaterial({
-            size: 0.5, map: texture, transparent: true, 
-            blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffaa00
+            size: 0.35, map: tex, transparent: true, opacity: 1,
+            vertexColors: true, blending: THREE.AdditiveBlending, depthWrite: false
         });
+        const sys = new THREE.Points(geo, mat);
+        scene.add(sys);
 
-        const sparks = new THREE.Points(geo, mat);
-        scene.add(sparks);
-
-        // The Void
+        // -- The Void --
         const voidGeo = new THREE.CircleGeometry(1, 64);
         const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const portalVoid = new THREE.Mesh(voidGeo, voidMat);
         portalVoid.position.z = 0.1;
         scene.add(portalVoid);
 
-        // --- 3. STATE ---
-        const State = {
-            radius: 0,
-            targetRadius: 0,
-            charge: 0, // 0 to 100
-            maxRadius: 6.5
-        };
+        // --- 3. LOGIC ---
+        let State = { r:0, tr:0 };
 
-        // --- 4. INPUT LOGIC (TOUCH / MOUSE) ---
-        const trail = document.getElementById('trail');
-        const statusText = document.getElementById('status-text');
-        const guideRing = document.getElementById('guide-ring');
-        let lastAngle = null;
-        let isTouching = false;
+        function resetParticle(i) {
+            const idx = i*3;
+            // Only spawn if radius is open
+            if(State.r > 0.2) {
+                const angle = Math.random() * Math.PI * 2;
+                const r = State.r + (Math.random()-0.5)*0.2; // Spawn on ring
 
-        function handleInput(x, y) {
-            const centerX = window.innerWidth / 2;
-            const centerY = window.innerHeight / 2;
-            
-            // Move Visual Trail
-            trail.style.display = 'block';
-            trail.style.left = x + 'px';
-            trail.style.top = y + 'px';
+                pos[idx] = Math.cos(angle) * r;
+                pos[idx+1] = Math.sin(angle) * r;
+                pos[idx+2] = (Math.random()-0.5)*0.5;
 
-            // Calculate Angle relative to center
-            const ang = Math.atan2(y - centerY, x - centerX);
+                // TANGENTIAL VELOCITY (The "Buzzsaw" Look)
+                // Tangent vector is (-y, x)
+                const speed = 0.15 + Math.random()*0.2;
+                vel[idx] = -Math.sin(angle)*speed + (Math.random()-0.5)*0.05; 
+                vel[idx+1] = Math.cos(angle)*speed + (Math.random()-0.5)*0.05;
+                vel[idx+2] = (Math.random()-0.5)*0.02;
 
-            if (lastAngle !== null) {
-                let delta = ang - lastAngle;
-                // Fix Wrap-around PI
-                if (delta > Math.PI) delta -= Math.PI * 2;
-                if (delta < -Math.PI) delta += Math.PI * 2;
-
-                // Clockwise is positive in screen coords (Y down)
-                if (Math.abs(delta) > 0.01) {
-                    State.charge += delta * 15.0; // Sensitivity
-                }
+                life[i] = 1.0;
+                maxLife[i] = 0.5 + Math.random()*0.5;
+            } else {
+                pos[idx] = 9999;
             }
-            lastAngle = ang;
         }
 
-        // Mouse Events
-        window.addEventListener('mousedown', e => { isTouching = true; lastAngle = null; });
-        window.addEventListener('mouseup', e => { isTouching = false; trail.style.display = 'none'; });
-        window.addEventListener('mousemove', e => { if(isTouching) handleInput(e.clientX, e.clientY); });
-
-        // Touch Events
-        window.addEventListener('touchstart', e => { isTouching = true; lastAngle = null; e.preventDefault(); }, {passive: false});
-        window.addEventListener('touchend', e => { isTouching = false; trail.style.display = 'none'; e.preventDefault(); }, {passive: false});
-        window.addEventListener('touchmove', e => { 
-            handleInput(e.touches[0].clientX, e.touches[0].clientY); 
-            e.preventDefault(); // Stop scrolling
-        }, {passive: false});
-
-        // --- 5. ANIMATION LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-
-            // Logic
-            State.charge = Math.max(0, Math.min(State.charge, 100)); // Clamp 0-100
             
-            // Auto-decay if not touching
-            if(!isTouching && State.charge > 0) {
-                State.charge *= 0.95;
-            }
-
-            // Update Target Radius
-            State.targetRadius = (State.charge / 100) * State.maxRadius;
-            State.radius += (State.targetRadius - State.radius) * 0.1;
-
-            // UI Updates
-            if(State.charge > 10) {
-                statusText.innerText = `OPENING... ${Math.floor(State.charge)}%`;
-                guideRing.style.borderColor = `rgba(255, 170, 0, ${State.charge/100})`;
-                guideRing.style.transform = `translate(-50%, -50%) scale(${1 + State.charge/50})`;
-            } else {
-                statusText.innerText = "TOUCH SCREEN & SPIN CLOCKWISE";
-                guideRing.style.borderColor = "rgba(255, 255, 255, 0.1)";
-                guideRing.style.transform = `translate(-50%, -50%) scale(1)`;
-            }
-
+            // Smooth Radius Transition
+            State.r += (State.tr - State.r) * 0.1;
+            
             // Visuals
-            portalVoid.scale.setScalar(State.radius * 0.85);
-            sparks.rotation.z -= 0.05;
-
-            const pos = geo.attributes.position.array;
-            const pData = geo.attributes.data.array;
+            portalVoid.scale.setScalar(Math.max(0.01, State.r * 0.9));
+            sys.rotation.z -= 0.02; // Spin the whole system
 
             for(let i=0; i<COUNT; i++) {
                 const idx = i*3;
-                pData[idx+1] += pData[idx] * 0.01; // Angle += Speed
-                
-                const angle = pData[idx+1];
-                const r = State.radius + pData[idx+2]; 
+                life[i] -= 0.02; // Decay
 
-                if (State.radius > 0.2) {
-                    // Tangential Sparks
-                    pos[idx] = Math.cos(angle) * r + (Math.random()-0.5)*0.2;
-                    pos[idx+1] = Math.sin(angle) * r + (Math.random()-0.5)*0.2;
-                    pos[idx+2] = (Math.random() - 0.5) * 0.5;
+                if(life[i] <= 0) {
+                    resetParticle(i);
                 } else {
-                    pos[idx] = 9999;
+                    // Move
+                    pos[idx] += vel[idx];
+                    pos[idx+1] += vel[idx+1];
+                    pos[idx+2] += vel[idx+2];
+
+                    // Color Gradient (White -> Gold -> Red)
+                    const l = life[i];
+                    if(l > 0.8) { col[idx]=1; col[idx+1]=1; col[idx+2]=1; } // White
+                    else if(l > 0.5) { col[idx]=1; col[idx+1]=0.8; col[idx+2]=0.2; } // Gold
+                    else { col[idx]=1; col[idx+1]=0.2; col[idx+2]=0; } // Red
                 }
             }
+            
             geo.attributes.position.needsUpdate = true;
+            geo.attributes.color.needsUpdate = true;
             renderer.render(scene, camera);
         }
         animate();
 
-        window.addEventListener('resize', () => {
+        // --- 4. AI & GESTURES ---
+        async function init() {
+            document.getElementById('start-btn').style.display = 'none';
+            document.getElementById('loader').style.display = 'flex';
+
+            const hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+            
+            // IMPORTANT: Detect 2 Hands for distance check
+            hands.setOptions({
+                maxNumHands: 2, 
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+            hands.onResults(onResults);
+
+            const cam = new Camera(videoElement, {
+                onFrame: async () => await hands.send({image: videoElement}),
+                width: 640, height: 480, facingMode: 'user'
+            });
+            await cam.start();
+            
+            document.getElementById('loader').style.display = 'none';
+            resizeCanvas();
+        }
+
+        function onResults(results) {
+            // 1. Draw Debug Skeleton
+            debugCtx.save();
+            debugCtx.clearRect(0, 0, debugCanvas.width, debugCanvas.height);
+            
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    drawConnectors(debugCtx, landmarks, HAND_CONNECTIONS, {color: '#00ff88', lineWidth: 2});
+                    drawLandmarks(debugCtx, landmarks, {color: '#ff0000', lineWidth: 1, radius: 3});
+                }
+            }
+            debugCtx.restore();
+
+            // 2. Control Logic (Dual Hand Distance)
+            if (results.multiHandLandmarks.length === 2) {
+                // Get Wrists of both hands
+                const hand1 = results.multiHandLandmarks[0][0]; // Landmark 0 is wrist
+                const hand2 = results.multiHandLandmarks[1][0];
+
+                // Calculate distance (0.0 to ~0.8)
+                const dist = Math.hypot(hand1.x - hand2.x, hand1.y - hand2.y);
+                
+                // Map distance to Radius
+                // Close hands (dist < 0.2) -> Closed
+                // Far hands (dist > 0.6) -> Fully Open (Radius 5.5)
+                const minD = 0.15;
+                const maxD = 0.6;
+                
+                const normalized = Math.max(0, Math.min(1, (dist - minD) / (maxD - minD)));
+                State.tr = normalized * 5.5;
+
+                statusText.innerText = `DISTANCE: ${(normalized*100).toFixed(0)}%`;
+                statusText.style.color = "#ffaa00";
+                statusText.style.borderColor = "#ffaa00";
+
+            } else if (results.multiHandLandmarks.length === 1) {
+                statusText.innerText = "NEED 2 HANDS";
+                statusText.style.color = "#fff";
+                statusText.style.borderColor = "#fff";
+                State.tr = 0; // Close if only 1 hand
+            } else {
+                statusText.innerText = "NO HANDS DETECTED";
+                statusText.style.color = "#555";
+                statusText.style.borderColor = "#555";
+                State.tr = 0;
+            }
+        }
+
+        function resizeCanvas() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+            debugCanvas.width = window.innerWidth;
+            debugCanvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+
     </script>
 </body>
 </html>
