@@ -2,161 +2,226 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Strange: Server Select</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Doctor Strange: Tactile</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: monospace; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; touch-action: none; /* Prevent scrolling */ }
         
-        #input-video { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 1; transform: scaleX(-1); object-fit: cover; opacity: 0.5;
+        #hud-layer {
+            position: absolute; bottom: 50px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        
+        .spell-title {
+            color: #ffaa00; font-size: 24px; font-weight: 800; letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(255, 170, 0, 0.8); margin: 0;
+        }
+        
+        .spell-instruction {
+            color: #fff; font-size: 14px; background: rgba(20, 10, 0, 0.8); 
+            padding: 10px 25px; border-radius: 30px; border: 1px solid #ffaa00;
+            animation: pulse 2s infinite;
         }
 
-        /* Server Selection UI */
-        #server-select {
+        /* Center Guide */
+        #guide-ring {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 999; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px;
-            border: 1px solid #00ff88; text-align: center; width: 80%;
-        }
-        
-        .server-btn {
-            display: block; width: 100%; padding: 15px; margin: 10px 0;
-            background: #222; color: white; border: 1px solid #555;
-            font-size: 16px; cursor: pointer; border-radius: 5px;
-        }
-        .server-btn:active { background: #00ff88; color: black; }
-
-        #status-log {
-            position: absolute; bottom: 20px; width: 100%; text-align: center;
-            color: #00ff88; font-size: 14px; z-index: 50; background: rgba(0,0,0,0.7); padding: 5px;
+            width: 150px; height: 150px; border: 2px dashed rgba(255, 170, 0, 0.3);
+            border-radius: 50%; pointer-events: none; z-index: 5;
         }
 
-        /* The Tracker Dot */
-        #finger-dot {
-            position: absolute; width: 30px; height: 30px; 
-            background: red; border: 3px solid white; 
-            border-radius: 50%; z-index: 100; 
-            transform: translate(-50%, -50%); display: none;
-            box-shadow: 0 0 20px red;
+        /* Finger Trail */
+        .trail-dot {
+            position: absolute; width: 20px; height: 20px; background: #ffaa00;
+            border-radius: 50%; box-shadow: 0 0 15px #ffaa00;
+            pointer-events: none; transform: translate(-50%, -50%);
+            display: none; z-index: 20;
         }
+
+        @keyframes pulse { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
     </style>
 </head>
 <body>
 
-    <video id="input-video" playsinline></video>
-    
-    <!-- TRACKER DOT -->
-    <div id="finger-dot"></div>
-
-    <div id="status-log">WAITING FOR SERVER SELECTION...</div>
-
-    <!-- SERVER SELECTOR -->
-    <div id="server-select">
-        <h2 style="color:white; margin-top:0;">SELECT AI SERVER</h2>
-        <p style="color:#aaa; font-size:12px;">If one hangs, refresh and try another.</p>
-        
-        <button class="server-btn" onclick="loadAI('google')">
-            SERVER A: Google (VPN Required)
-        </button>
-        
-        <button class="server-btn" onclick="loadAI('jsdelivr')">
-            SERVER B: jsDelivr (Global)
-        </button>
-        
-        <button class="server-btn" onclick="loadAI('unpkg')">
-            SERVER C: Unpkg (Backup)
-        </button>
+    <div id="hud-layer">
+        <h1 class="spell-title">TACTILE MAGIC</h1>
+        <div class="spell-instruction" id="status-text">TOUCH SCREEN & SPIN CLOCKWISE</div>
     </div>
 
-    <!-- Libraries -->
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+    <div id="guide-ring"></div>
+    <div id="trail" class="trail-dot"></div>
+
+    <!-- Only Three.js (Fast & Reliable) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 
     <script>
-        const statusLog = document.getElementById('status-log');
-        const selector = document.getElementById('server-select');
-        const dot = document.getElementById('finger-dot');
-        let hands;
-        let camera;
+        // --- 1. VISUAL ENGINE ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0x000000, 0.03);
 
-        async function loadAI(source) {
-            // Hide menu
-            selector.style.display = 'none';
-            statusLog.innerText = `CONNECTING TO ${source.toUpperCase()}...`;
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
 
-            let baseUrl = "";
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
+
+        // --- 2. TEXTURES & PARTICLES ---
+        const canvas = document.createElement('canvas');
+        canvas.width = 32; canvas.height = 32;
+        const ctx = canvas.getContext('2d');
+        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        grad.addColorStop(0, '#ffffff');   
+        grad.addColorStop(0.3, '#ffaa00');  
+        grad.addColorStop(1, 'transparent');
+        ctx.fillStyle = grad; ctx.fillRect(0, 0, 32, 32);
+        const texture = new THREE.CanvasTexture(canvas);
+
+        const COUNT = 5000;
+        const geo = new THREE.BufferGeometry();
+        const positions = new Float32Array(COUNT * 3);
+        const data = new Float32Array(COUNT * 3); // x=speed, y=angle, z=radius_offset
+        
+        for(let i=0; i<COUNT; i++) {
+            positions[i*3] = 9999; 
+            data[i*3] = 2 + Math.random() * 4;       // Speed
+            data[i*3+1] = Math.random() * Math.PI * 2; // Angle
+            data[i*3+2] = (Math.random() - 0.5) * 1.5; // Jitter
+        }
+        
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('data', new THREE.BufferAttribute(data, 3));
+
+        const mat = new THREE.PointsMaterial({
+            size: 0.5, map: texture, transparent: true, 
+            blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffaa00
+        });
+
+        const sparks = new THREE.Points(geo, mat);
+        scene.add(sparks);
+
+        // The Void
+        const voidGeo = new THREE.CircleGeometry(1, 64);
+        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
+        const portalVoid = new THREE.Mesh(voidGeo, voidMat);
+        portalVoid.position.z = 0.1;
+        scene.add(portalVoid);
+
+        // --- 3. STATE ---
+        const State = {
+            radius: 0,
+            targetRadius: 0,
+            charge: 0, // 0 to 100
+            maxRadius: 6.5
+        };
+
+        // --- 4. INPUT LOGIC (TOUCH / MOUSE) ---
+        const trail = document.getElementById('trail');
+        const statusText = document.getElementById('status-text');
+        const guideRing = document.getElementById('guide-ring');
+        let lastAngle = null;
+        let isTouching = false;
+
+        function handleInput(x, y) {
+            const centerX = window.innerWidth / 2;
+            const centerY = window.innerHeight / 2;
             
-            // Define Server Paths
-            if(source === 'google') {
-                // Official Google Source
-                baseUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/hands/`; 
-            } else if (source === 'jsdelivr') {
-                // Fast Global CDN
-                baseUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/`;
-            } else if (source === 'unpkg') {
-                // Backup CDN
-                baseUrl = `https://unpkg.com/@mediapipe/hands@0.4.1646424915/`;
+            // Move Visual Trail
+            trail.style.display = 'block';
+            trail.style.left = x + 'px';
+            trail.style.top = y + 'px';
+
+            // Calculate Angle relative to center
+            const ang = Math.atan2(y - centerY, x - centerX);
+
+            if (lastAngle !== null) {
+                let delta = ang - lastAngle;
+                // Fix Wrap-around PI
+                if (delta > Math.PI) delta -= Math.PI * 2;
+                if (delta < -Math.PI) delta += Math.PI * 2;
+
+                // Clockwise is positive in screen coords (Y down)
+                if (Math.abs(delta) > 0.01) {
+                    State.charge += delta * 15.0; // Sensitivity
+                }
             }
-
-            try {
-                hands = new Hands({locateFile: (file) => {
-                    statusLog.innerText = `DOWNLOADING: ${file}`;
-                    return `${baseUrl}${file}`;
-                }});
-
-                hands.setOptions({
-                    maxNumHands: 1,
-                    modelComplexity: 0, // Lite mode (Faster download)
-                    minDetectionConfidence: 0.5,
-                    minTrackingConfidence: 0.5
-                });
-
-                hands.onResults(onResults);
-
-                // Start Camera
-                const videoElement = document.getElementById('input-video');
-                camera = new Camera(videoElement, {
-                    onFrame: async () => {
-                        await hands.send({image: videoElement});
-                    },
-                    width: 640, height: 480, facingMode: 'user'
-                });
-
-                await camera.start();
-                statusLog.innerText = "CAMERA ACTIVE. WAITING FOR HAND...";
-
-            } catch (e) {
-                statusLog.innerText = "ERROR: " + e.message;
-                alert("Failed to load. Refresh and try a different server.");
-            }
+            lastAngle = ang;
         }
 
-        function onResults(results) {
-            // If we get here, AI is working!
+        // Mouse Events
+        window.addEventListener('mousedown', e => { isTouching = true; lastAngle = null; });
+        window.addEventListener('mouseup', e => { isTouching = false; trail.style.display = 'none'; });
+        window.addEventListener('mousemove', e => { if(isTouching) handleInput(e.clientX, e.clientY); });
+
+        // Touch Events
+        window.addEventListener('touchstart', e => { isTouching = true; lastAngle = null; e.preventDefault(); }, {passive: false});
+        window.addEventListener('touchend', e => { isTouching = false; trail.style.display = 'none'; e.preventDefault(); }, {passive: false});
+        window.addEventListener('touchmove', e => { 
+            handleInput(e.touches[0].clientX, e.touches[0].clientY); 
+            e.preventDefault(); // Stop scrolling
+        }, {passive: false});
+
+        // --- 5. ANIMATION LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // Logic
+            State.charge = Math.max(0, Math.min(State.charge, 100)); // Clamp 0-100
             
-            if (results.multiHandLandmarks.length > 0) {
-                const lm = results.multiHandLandmarks[0];
-                const tip = lm[8]; // Index Finger
+            // Auto-decay if not touching
+            if(!isTouching && State.charge > 0) {
+                State.charge *= 0.95;
+            }
 
-                // Show Dot
-                dot.style.display = 'block';
-                
-                // Map coordinates
-                const x = (1 - tip.x) * window.innerWidth;
-                const y = tip.y * window.innerHeight;
+            // Update Target Radius
+            State.targetRadius = (State.charge / 100) * State.maxRadius;
+            State.radius += (State.targetRadius - State.radius) * 0.1;
 
-                dot.style.left = x + "px";
-                dot.style.top = y + "px";
-
-                statusLog.innerText = "SYSTEM ONLINE - TRACKING ACTIVE";
-                statusLog.style.color = "#00ff88";
+            // UI Updates
+            if(State.charge > 10) {
+                statusText.innerText = `OPENING... ${Math.floor(State.charge)}%`;
+                guideRing.style.borderColor = `rgba(255, 170, 0, ${State.charge/100})`;
+                guideRing.style.transform = `translate(-50%, -50%) scale(${1 + State.charge/50})`;
             } else {
-                dot.style.display = 'none';
-                statusLog.innerText = "NO HAND DETECTED";
-                statusLog.style.color = "yellow";
+                statusText.innerText = "TOUCH SCREEN & SPIN CLOCKWISE";
+                guideRing.style.borderColor = "rgba(255, 255, 255, 0.1)";
+                guideRing.style.transform = `translate(-50%, -50%) scale(1)`;
             }
+
+            // Visuals
+            portalVoid.scale.setScalar(State.radius * 0.85);
+            sparks.rotation.z -= 0.05;
+
+            const pos = geo.attributes.position.array;
+            const pData = geo.attributes.data.array;
+
+            for(let i=0; i<COUNT; i++) {
+                const idx = i*3;
+                pData[idx+1] += pData[idx] * 0.01; // Angle += Speed
+                
+                const angle = pData[idx+1];
+                const r = State.radius + pData[idx+2]; 
+
+                if (State.radius > 0.2) {
+                    // Tangential Sparks
+                    pos[idx] = Math.cos(angle) * r + (Math.random()-0.5)*0.2;
+                    pos[idx+1] = Math.sin(angle) * r + (Math.random()-0.5)*0.2;
+                    pos[idx+2] = (Math.random() - 0.5) * 0.5;
+                } else {
+                    pos[idx] = 9999;
+                }
+            }
+            geo.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
         }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
