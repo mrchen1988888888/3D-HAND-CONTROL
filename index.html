@@ -3,40 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Doctor Strange: Sling Ring</title>
+    <title>Doctor Strange: Cinematic Portal</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Cinzel', serif; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Courier New', monospace; }
         
-        /* Mirror video for natural interaction */
+        /* Video Layer (Mirrored & Hidden Background) */
         #input-video { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
             opacity: 0; pointer-events: none; z-index: -1; 
             transform: scaleX(-1);
         }
 
-        /* Cinematic HUD */
+        /* HUD Layer */
         #hud-layer {
             position: absolute; bottom: 40px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
             display: flex; flex-direction: column; align-items: center; gap: 10px;
         }
         
-        .spell-name {
-            color: #f5a623; font-size: 28px; font-weight: 800; letter-spacing: 4px;
-            text-shadow: 0 0 20px rgba(245, 166, 35, 0.8);
+        .spell-title {
+            color: #ffaa00; font-size: 24px; font-weight: 800; letter-spacing: 4px;
+            text-shadow: 0 0 20px rgba(255, 170, 0, 0.8);
             text-transform: uppercase; margin: 0;
         }
         
         .spell-status {
-            color: rgba(255, 255, 255, 0.9); font-size: 14px; font-family: sans-serif;
-            background: rgba(10, 10, 10, 0.8); padding: 8px 20px; border-radius: 20px;
-            border: 1px solid rgba(245, 166, 35, 0.5); backdrop-filter: blur(4px);
+            color: rgba(255, 255, 255, 0.8); font-size: 12px;
+            background: rgba(20, 10, 0, 0.8); padding: 6px 18px; border-radius: 4px;
+            border: 1px solid rgba(255, 170, 0, 0.4);
             transition: all 0.2s;
-        }
-
-        /* Center Energy Ring UI */
-        #energy-ui {
-            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 200px; height: 200px; pointer-events: none; opacity: 0.6; z-index: 5;
         }
 
         /* Loading Screen */
@@ -46,16 +40,15 @@
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             transition: opacity 0.5s;
         }
+        
         .spinner {
-            width: 50px; height: 50px; border: 3px solid #222; 
-            border-top: 3px solid #f5a623; border-radius: 50%; 
+            width: 50px; height: 50px; border: 2px solid #333; 
+            border-top: 2px solid #ffaa00; border-radius: 50%; 
             animation: spin 1s linear infinite; margin-bottom: 20px;
         }
-        .log-text { color: #f5a623; font-size: 12px; font-family: monospace; }
-
+        
         @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&display=swap" rel="stylesheet">
 </head>
 <body>
 
@@ -63,22 +56,12 @@
     
     <div id="loader">
         <div class="spinner"></div>
-        <div class="log-text" id="sys-log">OPENING THE EYE OF AGAMOTTO...</div>
+        <div style="color:#ffaa00; font-size:12px;">LOADING REALITY ENGINE...</div>
     </div>
 
     <div id="hud-layer">
-        <h1 class="spell-name">Sling Ring</h1>
+        <h1 class="spell-title">Eldritch Gateway</h1>
         <div class="spell-status" id="status-text">INITIALIZING...</div>
-    </div>
-
-    <div id="energy-ui">
-        <svg width="200" height="200" viewBox="0 0 200 200">
-            <!-- Background Ring -->
-            <circle cx="100" cy="100" r="60" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2"/>
-            <!-- Progress Ring -->
-            <circle id="progress-circle" cx="100" cy="100" r="60" fill="none" stroke="#f5a623" stroke-width="4" 
-                    stroke-dasharray="377" stroke-dashoffset="377" transform="rotate(-90 100 100)" stroke-linecap="round"/>
-        </svg>
     </div>
 
     <!-- GLOBAL CDN SOURCES -->
@@ -88,146 +71,176 @@
     <script src="https://unpkg.com/@mediapipe/hands/hands.js"></script>
 
     <script>
-        const logBox = document.getElementById('sys-log');
-        function log(msg) { logBox.innerText = msg; console.log(msg); }
-
-        // --- 1. VISUAL ENGINE (The Magic) ---
+        // --- 1. VISUAL ENGINE SETUP ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.02);
+        // Heavy dark fog to make sparks pop
+        scene.fog = new THREE.FogExp2(0x000000, 0.04);
 
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.z = 15;
+        camera.position.z = 14;
 
         const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // --- Spark Texture ---
+        // --- 2. TEXTURE GENERATION (Hot Spark) ---
         const canvas = document.createElement('canvas');
-        canvas.width = 64; canvas.height = 64;
+        canvas.width = 32; canvas.height = 32;
         const ctx = canvas.getContext('2d');
-        const grad = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
-        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');      
-        grad.addColorStop(0.2, 'rgba(255, 200, 50, 1)');     
-        grad.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)');    
-        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');           
+        const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
+        grad.addColorStop(0, 'rgba(255, 255, 255, 1)');   // White core
+        grad.addColorStop(0.2, 'rgba(255, 220, 100, 1)');  // Gold inner
+        grad.addColorStop(0.5, 'rgba(255, 100, 0, 0.8)'); // Orange outer
+        grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
         ctx.fillStyle = grad;
-        ctx.fillRect(0, 0, 64, 64);
+        ctx.fillRect(0, 0, 32, 32);
         const sparkTexture = new THREE.CanvasTexture(canvas);
 
-        // --- Particle Physics System ---
-        const COUNT = 5000;
+        // --- 3. PHYSICS PARTICLE SYSTEM ---
+        const COUNT = 6000; // High density
         const geo = new THREE.BufferGeometry();
+        
+        // Arrays for GPU
         const positions = new Float32Array(COUNT * 3);
-        const data = new Float32Array(COUNT * 3); // x=speed, y=angle_on_ring, z=radius_offset
+        const colors = new Float32Array(COUNT * 3);
         
-        for(let i=0; i<COUNT; i++) {
-            positions[i*3] = 9999; // Start hidden
-            positions[i*3+1] = 9999;
-            positions[i*3+2] = 0;
+        // Arrays for CPU Physics
+        const velocities = new Float32Array(COUNT * 3);
+        const lifes = new Float32Array(COUNT); // 0.0 (dead) to 1.0 (fresh)
 
-            data[i*3] = 2 + Math.random() * 4;       // Speed
-            data[i*3+1] = Math.random() * Math.PI * 2; // Angle
-            data[i*3+2] = (Math.random() - 0.5) * 1.0; // Thickness
+        // Initialize invisible
+        for(let i=0; i<COUNT; i++) {
+            lifes[i] = 0; 
+            positions[i*3] = 9999; 
         }
-        
+
         geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-        geo.setAttribute('particleData', new THREE.BufferAttribute(data, 3));
+        geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
         const mat = new THREE.PointsMaterial({
-            size: 0.35,
+            size: 0.3,
             map: sparkTexture,
             transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            color: 0xffaa00
+            opacity: 1,
+            vertexColors: true,
+            blending: THREE.AdditiveBlending, // Makes overlapping sparks super bright
+            depthWrite: false
         });
 
-        const sparks = new THREE.Points(geo, mat);
-        scene.add(sparks);
+        const portalSystem = new THREE.Points(geo, mat);
+        scene.add(portalSystem);
 
-        // --- The Portal Void (Center Black Hole) ---
-        const voidGeo = new THREE.IcosahedronGeometry(1, 1);
-        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent:true, opacity:0 });
+        // --- 4. THE VOID (Black Hole) ---
+        const voidGeo = new THREE.CircleGeometry(1, 64);
+        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000 });
         const portalVoid = new THREE.Mesh(voidGeo, voidMat);
+        // Push slightly forward to cover back-particles
+        portalVoid.position.z = 0.1; 
         scene.add(portalVoid);
 
-        // --- GAME STATE ---
+        // --- 5. GAME STATE ---
         const State = {
-            radius: 0,          // Current visual radius
-            targetRadius: 0,    // Where we want to be
-            charge: 0,          // 0 to 100 (Progress of the spell)
-            maxRadius: 6.5
+            currentRadius: 0,
+            targetRadius: 0,
+            charge: 0,
+            maxRadius: 5.5
         };
 
-        // --- ANIMATION LOOP ---
+        // --- 6. PHYSICS LOOP (The Logic) ---
+        
+        function resetParticle(i) {
+            const idx = i * 3;
+            
+            // 1. Only spawn if portal is open
+            if (State.currentRadius < 0.2) {
+                positions[idx] = 9999; // Hide
+                return;
+            }
+
+            // 2. Spawn on current Ring Radius
+            const angle = Math.random() * Math.PI * 2;
+            const r = State.currentRadius + (Math.random() - 0.5) * 0.3; // Slight jitter on spawn
+
+            positions[idx] = Math.cos(angle) * r;
+            positions[idx+1] = Math.sin(angle) * r;
+            positions[idx+2] = (Math.random() - 0.5) * 0.5; // Z Thickness
+
+            // 3. Tangential Velocity (The Grinder Effect)
+            // Vector (-y, x) is tangent to circle
+            const speed = 0.1 + Math.random() * 0.2;
+            
+            // Add some radial noise so they spray outward slightly
+            velocities[idx] = (-Math.sin(angle) * speed) + (Math.cos(angle) * 0.05); 
+            velocities[idx+1] = (Math.cos(angle) * speed) + (Math.sin(angle) * 0.05);
+            velocities[idx+2] = (Math.random() - 0.5) * 0.05;
+
+            lifes[i] = 1.0; // Reset life
+        }
+
         function animate() {
             requestAnimationFrame(animate);
 
-            // 1. Smoothly interpolate radius based on charge
-            // If charge increases, radius grows. If charge drops, radius shrinks.
+            // 1. Update Radius based on Charge
             State.targetRadius = (State.charge / 100) * State.maxRadius;
-            State.radius += (State.targetRadius - State.radius) * 0.1;
+            State.currentRadius += (State.targetRadius - State.currentRadius) * 0.1;
 
-            // 2. Void Animation
-            portalVoid.scale.setScalar(State.radius * 0.85);
-            portalVoid.material.opacity = Math.min(1, State.radius / 2);
-            portalVoid.rotation.y += 0.02;
+            // 2. Update Void Size
+            portalVoid.scale.setScalar(Math.max(0.01, State.currentRadius - 0.2));
             
-            // 3. Spin the sparks ring
-            sparks.rotation.z -= 0.05;
+            // 3. Rotate the whole system slightly for chaos
+            portalSystem.rotation.z -= 0.02;
 
-            // 4. Particle Update
-            const pos = sparks.geometry.attributes.position.array;
-            const pData = sparks.geometry.attributes.particleData.array;
+            // 4. Update Particles
+            const pos = geo.attributes.position.array;
+            const col = geo.attributes.color.array;
 
             for(let i=0; i<COUNT; i++) {
-                const idx = i*3;
-                
-                // Move particle along the ring
-                pData[idx+1] += pData[idx] * 0.01; // angle += speed
-                const angle = pData[idx+1];
-                
-                // Calculate Radius: Base Radius + Jitter
-                const r = State.radius + pData[idx+2]; 
+                const idx = i * 3;
 
-                // ONLY render if the portal is actually open
-                if (State.radius > 0.2) {
-                    // Tangential Sparks Logic (The "Buzzsaw" look)
-                    // We add random noise to X/Y to make it look like chaotic fire
-                    pos[idx] = Math.cos(angle) * r + (Math.random()-0.5)*0.2;
-                    pos[idx+1] = Math.sin(angle) * r + (Math.random()-0.5)*0.2;
-                    pos[idx+2] = (Math.random() - 0.5) * 0.5;
+                // Decay Life
+                lifes[i] -= 0.015 + Math.random() * 0.01;
+
+                if (lifes[i] <= 0) {
+                    // Dead? Try to respawn
+                    resetParticle(i);
                 } else {
-                    pos[idx] = 9999; // Hide particle
+                    // Alive? Move it
+                    pos[idx] += velocities[idx];
+                    pos[idx+1] += velocities[idx+1];
+                    pos[idx+2] += velocities[idx+2];
+
+                    // Update Color based on Life (Temperature Gradient)
+                    if (lifes[i] > 0.9) {
+                        col[idx] = 1.0; col[idx+1] = 1.0; col[idx+2] = 1.0; // White
+                    } else if (lifes[i] > 0.6) {
+                        col[idx] = 1.0; col[idx+1] = 0.8; col[idx+2] = 0.2; // Gold
+                    } else if (lifes[i] > 0.3) {
+                        col[idx] = 1.0; col[idx+1] = 0.4; col[idx+2] = 0.0; // Orange
+                    } else {
+                        col[idx] = 0.5; col[idx+1] = 0.0; col[idx+2] = 0.0; // Red Fade
+                    }
                 }
             }
-            
-            sparks.geometry.attributes.position.needsUpdate = true;
+
+            geo.attributes.position.needsUpdate = true;
+            geo.attributes.color.needsUpdate = true;
+
             renderer.render(scene, camera);
         }
         animate();
 
-        // --- 2. AI & GESTURE LOGIC ---
-        
+        // --- 7. AI INTERACTION (Global Mode) ---
         const videoElement = document.getElementById('input-video');
         const statusText = document.getElementById('status-text');
-        const uiRing = document.getElementById('progress-circle');
         
         let lastAngle = null;
-        let signalLossTimer = null;
+        let signalTimer = null;
 
-        // Calculate angle of finger relative to screen center (0.5, 0.5)
-        function getAngle(x, y) {
-            return Math.atan2(y - 0.5, x - 0.5);
-        }
+        function getAngle(x, y) { return Math.atan2(y - 0.5, x - 0.5); }
 
-        log("DOWNLOADING NEURAL NETWORKS...");
-        const hands = new Hands({locateFile: (file) => {
-            return `https://unpkg.com/@mediapipe/hands/${file}`;
-        }});
-
+        const hands = new Hands({locateFile: (file) => `https://unpkg.com/@mediapipe/hands/${file}`});
+        
         hands.setOptions({
             maxNumHands: 1,
             modelComplexity: 1,
@@ -235,81 +248,60 @@
             minTrackingConfidence: 0.5
         });
 
-        let isInit = false;
-
+        let isLoaded = false;
         hands.onResults(results => {
-            if(!isInit) {
-                isInit = true;
+            if(!isLoaded) {
+                isLoaded = true;
                 document.getElementById('loader').style.opacity = 0;
-                setTimeout(() => document.getElementById('loader').style.display = 'none', 500);
+                setTimeout(() => document.getElementById('loader').style.display='none', 500);
             }
 
             if (results.multiHandLandmarks.length > 0) {
-                if (signalLossTimer) clearTimeout(signalLossTimer);
+                if(signalTimer) clearTimeout(signalTimer);
 
                 const lm = results.multiHandLandmarks[0];
-                const tip = lm[8]; // Index Finger Tip
-                
-                // 1. Calculate Rotation
+                const tip = lm[8]; // Index Finger
                 const currentAngle = getAngle(tip.x, tip.y);
-                
+
                 if (lastAngle !== null) {
                     let delta = currentAngle - lastAngle;
-                    
-                    // Fix Wrap-around (3.14 -> -3.14)
                     if (delta > Math.PI) delta -= Math.PI * 2;
                     if (delta < -Math.PI) delta += Math.PI * 2;
-                    
-                    // 2. ADD TO CHARGE
-                    // If delta is significant (moving), add to charge
-                    // We use absolute value so Clockwise OR Counter-clockwise works
-                    // (Doctor Strange usually goes Clockwise, but let's be user friendly)
+
+                    // Interaction Sensitivity
                     if (Math.abs(delta) > 0.05 && Math.abs(delta) < 1.0) {
-                        State.charge += Math.abs(delta) * 5.0; // Multiplier for sensitivity
+                        State.charge += Math.abs(delta) * 8.0; 
                     }
                 }
                 lastAngle = currentAngle;
 
-                // 3. UI & State Updates
-                State.charge = Math.min(State.charge, 100); // Cap at 100%
-                
-                // Decay charge slightly if not moving fast enough (Simulate effort)
-                // But don't decay if fully open (optional, here we decay to require constant focus)
-                // State.charge *= 0.99; 
+                // Cap Charge
+                State.charge = Math.min(State.charge, 100);
 
-                const percent = Math.floor(State.charge);
-                const strokeOffset = 377 - (377 * (State.charge / 100));
-                uiRing.style.strokeDashoffset = strokeOffset;
-
-                // 4. Feedback Text
+                // UI Text
                 if (State.charge > 90) {
-                    statusText.innerText = "PORTAL STABLE - KEEP SPINNING";
+                    statusText.innerText = "GATEWAY STABLE";
                     statusText.style.color = "#00ff88";
                     statusText.style.borderColor = "#00ff88";
-                } else if (State.charge > 5) {
-                    statusText.innerText = `CONJURING... ${percent}%`;
-                    statusText.style.color = "#f5a623";
-                    statusText.style.borderColor = "#f5a623";
+                } else if (State.charge > 10) {
+                    statusText.innerText = `CONJURING... ${Math.floor(State.charge)}%`;
+                    statusText.style.color = "#ffaa00";
+                    statusText.style.borderColor = "#ffaa00";
                 } else {
-                    statusText.innerText = "DRAW CIRCLES WITH INDEX FINGER";
+                    statusText.innerText = "SPIN FINGER TO OPEN";
                     statusText.style.color = "#fff";
-                    statusText.style.borderColor = "rgba(255,255,255,0.3)";
+                    statusText.style.borderColor = "#555";
                 }
 
             } else {
-                // Hand Lost - Close Portal
-                if (!signalLossTimer) {
-                    signalLossTimer = setTimeout(() => {
+                // Signal Lost -> Decay
+                if (!signalTimer) {
+                    signalTimer = setTimeout(() => {
                         lastAngle = null;
-                        
-                        // Rapid Decay when hand is lost
-                        State.charge *= 0.9;
+                        State.charge *= 0.9; // Fast decay
                         if(State.charge < 1) State.charge = 0;
-
-                        const strokeOffset = 377 - (377 * (State.charge / 100));
-                        uiRing.style.strokeDashoffset = strokeOffset;
-
-                        statusText.innerText = "FOCUS LOST - PORTAL CLOSING";
+                        
+                        statusText.innerText = "LINK BROKEN - CLOSING";
                         statusText.style.color = "#555";
                         statusText.style.borderColor = "#333";
                     }, 100);
@@ -317,14 +309,11 @@
             }
         });
 
-        const cameraUtils = new Camera(videoElement, {
+        const cam = new Camera(videoElement, {
             onFrame: async () => await hands.send({image: videoElement}),
             width: 640, height: 480, facingMode: 'user'
         });
-        
-        cameraUtils.start().catch(e => {
-            log("Camera Error: Check Permissions/HTTPS");
-        });
+        cam.start();
 
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
