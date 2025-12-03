@@ -3,225 +3,159 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dr. Strange: Reactive Core</title>
+    <title>Dr. Strange: Server Select</title>
     <style>
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: monospace; }
         
         #input-video { 
             position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-            z-index: 1; transform: scaleX(-1); object-fit: cover;
+            z-index: 1; transform: scaleX(-1); object-fit: cover; opacity: 0.5;
         }
 
-        canvas {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            z-index: 10; pointer-events: none;
-        }
-
-        #hud {
-            position: absolute; bottom: 50px; width: 100%; text-align: center; z-index: 20;
-        }
-        .status {
-            background: rgba(0, 0, 0, 0.8); color: #00ff88; padding: 15px 30px; 
-            border: 2px solid #00ff88; font-size: 20px; font-weight: bold; display: inline-block;
-            border-radius: 10px;
-        }
-
-        #start-btn {
+        /* Server Selection UI */
+        #server-select {
             position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-            z-index: 999; padding: 20px 50px; font-size: 24px; font-weight: bold;
-            background: #00ff88; color: #000; border: 4px solid white; border-radius: 15px;
-            cursor: pointer;
+            z-index: 999; background: rgba(0,0,0,0.9); padding: 20px; border-radius: 10px;
+            border: 1px solid #00ff88; text-align: center; width: 80%;
+        }
+        
+        .server-btn {
+            display: block; width: 100%; padding: 15px; margin: 10px 0;
+            background: #222; color: white; border: 1px solid #555;
+            font-size: 16px; cursor: pointer; border-radius: 5px;
+        }
+        .server-btn:active { background: #00ff88; color: black; }
+
+        #status-log {
+            position: absolute; bottom: 20px; width: 100%; text-align: center;
+            color: #00ff88; font-size: 14px; z-index: 50; background: rgba(0,0,0,0.7); padding: 5px;
         }
 
-        .dot { position: absolute; width: 20px; height: 20px; border-radius: 50%; z-index: 50; transform: translate(-50%, -50%); display: none; }
-        #finger { background: red; border: 3px solid white; }
-        #wrist { background: blue; border: 3px solid white; }
+        /* The Tracker Dot */
+        #finger-dot {
+            position: absolute; width: 30px; height: 30px; 
+            background: red; border: 3px solid white; 
+            border-radius: 50%; z-index: 100; 
+            transform: translate(-50%, -50%); display: none;
+            box-shadow: 0 0 20px red;
+        }
     </style>
 </head>
 <body>
 
     <video id="input-video" playsinline></video>
-    <button id="start-btn" onclick="startSystem()">ACTIVATE SYSTEM</button>
-
-    <div id="hud"><div class="status" id="status">SYSTEM STANDBY</div></div>
     
-    <div id="finger" class="dot"></div>
-    <div id="wrist" class="dot"></div>
+    <!-- TRACKER DOT -->
+    <div id="finger-dot"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <div id="status-log">WAITING FOR SERVER SELECTION...</div>
+
+    <!-- SERVER SELECTOR -->
+    <div id="server-select">
+        <h2 style="color:white; margin-top:0;">SELECT AI SERVER</h2>
+        <p style="color:#aaa; font-size:12px;">If one hangs, refresh and try another.</p>
+        
+        <button class="server-btn" onclick="loadAI('google')">
+            SERVER A: Google (VPN Required)
+        </button>
+        
+        <button class="server-btn" onclick="loadAI('jsdelivr')">
+            SERVER B: jsDelivr (Global)
+        </button>
+        
+        <button class="server-btn" onclick="loadAI('unpkg')">
+            SERVER C: Unpkg (Backup)
+        </button>
+    </div>
+
+    <!-- Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
 
     <script>
-        // --- 1. VISUAL ENGINE ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        camera.position.z = 20;
-
-        const renderer = new THREE.WebGLRenderer({alpha: true, antialias: true});
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x000000, 0); 
-        document.body.appendChild(renderer.domElement);
-
-        // --- OBJECT 1: THE REACTOR CUBE ---
-        // This cube will scale up directly with your charge
-        const boxGeo = new THREE.BoxGeometry(2, 2, 2);
-        const boxMat = new THREE.MeshBasicMaterial({color: 0x00ff88, wireframe: true, transparent: true, opacity: 0.8});
-        const reactorCube = new THREE.Mesh(boxGeo, boxMat);
-        scene.add(reactorCube);
-
-        // --- OBJECT 2: THE PARTICLE SPHERE ---
-        // 3000 Red dots that expand outward
-        const COUNT = 3000;
-        const geo = new THREE.BufferGeometry();
-        const pos = new Float32Array(COUNT*3);
-        const angles = new Float32Array(COUNT * 3); // Store random angles
-
-        for(let i=0; i<COUNT; i++) { 
-            // Assign random spherical angles
-            angles[i*3] = Math.random() * Math.PI * 2; // Theta
-            angles[i*3+1] = Math.random() * Math.PI;   // Phi
-            angles[i*3+2] = Math.random() * 0.5 + 0.5; // Speed variance
-            
-            pos[i*3] = 0; pos[i*3+1] = 0; pos[i*3+2] = 0;
-        }
-        
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        const mat = new THREE.PointsMaterial({ size: 0.4, color: 0xff0000 });
-        const particles = new THREE.Points(geo, mat);
-        scene.add(particles);
-
-        // State Variables
-        let State = { 
-            currentRadius: 0, 
-            targetRadius: 0, 
-            charge: 0 
-        };
-
-        function animate() {
-            requestAnimationFrame(animate);
-            
-            // Physics: Smoothly move Current Radius to Target Radius
-            State.currentRadius += (State.targetRadius - State.currentRadius) * 0.1;
-
-            // 1. UPDATE CUBE
-            // The cube grows from size 1 to size 5
-            const scale = 1 + State.currentRadius; 
-            reactorCube.scale.set(scale, scale, scale);
-            reactorCube.rotation.x += 0.02;
-            reactorCube.rotation.y += 0.02;
-            
-            // Change color if big
-            if(State.currentRadius > 3) reactorCube.material.color.setHex(0xffaa00); // Orange
-            else reactorCube.material.color.setHex(0x00ff88); // Green
-
-            // 2. UPDATE PARTICLES
-            const p = geo.attributes.position.array;
-            for(let i=0; i<COUNT; i++) {
-                // Determine radius for this particle
-                // Base Radius * Speed Variance + Jitter
-                const r = (State.currentRadius * 3.0 * angles[i*3+2]) + (Math.random()*0.1);
-                
-                const theta = angles[i*3];
-                const phi = angles[i*3+1];
-
-                // Spherical to Cartesian coordinates
-                p[i*3] = r * Math.sin(phi) * Math.cos(theta);
-                p[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
-                p[i*3+2] = r * Math.cos(phi);
-            }
-            geo.attributes.position.needsUpdate = true;
-
-            renderer.render(scene, camera);
-        }
-        animate();
-
-        // --- 2. AI LOGIC ---
-        const status = document.getElementById('status');
-        const fDot = document.getElementById('finger');
-        const wDot = document.getElementById('wrist');
-        let lastAng = null;
+        const statusLog = document.getElementById('status-log');
+        const selector = document.getElementById('server-select');
+        const dot = document.getElementById('finger-dot');
         let hands;
+        let camera;
 
-        async function startSystem() {
-            document.getElementById('start-btn').style.display = 'none';
-            status.innerText = "LOADING AI...";
+        async function loadAI(source) {
+            // Hide menu
+            selector.style.display = 'none';
+            statusLog.innerText = `CONNECTING TO ${source.toUpperCase()}...`;
+
+            let baseUrl = "";
             
-            hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-            hands.setOptions({maxNumHands: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
-            hands.onResults(onResults);
+            // Define Server Paths
+            if(source === 'google') {
+                // Official Google Source
+                baseUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/hands/`; 
+            } else if (source === 'jsdelivr') {
+                // Fast Global CDN
+                baseUrl = `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/`;
+            } else if (source === 'unpkg') {
+                // Backup CDN
+                baseUrl = `https://unpkg.com/@mediapipe/hands@0.4.1646424915/`;
+            }
 
-            const video = document.getElementById('input-video');
-            const cam = new Camera(video, {
-                onFrame: async () => await hands.send({image: video}),
-                width: 640, height: 480, facingMode: 'user'
-            });
-            await cam.start();
-        }
+            try {
+                hands = new Hands({locateFile: (file) => {
+                    statusLog.innerText = `DOWNLOADING: ${file}`;
+                    return `${baseUrl}${file}`;
+                }});
 
-        function onResults(res) {
-            if(res.multiHandLandmarks.length > 0) {
-                const lm = res.multiHandLandmarks[0];
-                const tip = lm[8];
-                const wrist = lm[0];
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 0, // Lite mode (Faster download)
+                    minDetectionConfidence: 0.5,
+                    minTrackingConfidence: 0.5
+                });
 
-                // Show Dots
-                fDot.style.display = 'block'; wDot.style.display = 'block';
-                const fx = (1-tip.x)*window.innerWidth;
-                const fy = tip.y*window.innerHeight;
-                const wx = (1-wrist.x)*window.innerWidth;
-                const wy = wrist.y*window.innerHeight;
-                fDot.style.left = fx+'px'; fDot.style.top = fy+'px';
-                wDot.style.left = wx+'px'; wDot.style.top = wy+'px';
+                hands.onResults(onResults);
 
-                // Calculate Rotation
-                const dx = fx - wx;
-                const dy = fy - wy;
-                const ang = Math.atan2(dy, dx);
+                // Start Camera
+                const videoElement = document.getElementById('input-video');
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        await hands.send({image: videoElement});
+                    },
+                    width: 640, height: 480, facingMode: 'user'
+                });
 
-                if(lastAng !== null) {
-                    let d = ang - lastAng;
-                    // Fix Wrap around PI
-                    if(d > Math.PI) d -= Math.PI*2;
-                    if(d < -Math.PI) d += Math.PI*2;
-                    
-                    // SENSITIVITY CHECK
-                    // If you move more than 0.05 radians, add to charge
-                    if(Math.abs(d) > 0.05) {
-                        State.charge += Math.abs(d) * 15; // Charge speed
-                    }
-                }
-                lastAng = ang;
+                await camera.start();
+                statusLog.innerText = "CAMERA ACTIVE. WAITING FOR HAND...";
 
-                // Charge Logic
-                State.charge = Math.min(State.charge, 100);
-                
-                // Map Charge (0-100) to Radius (0-5)
-                State.targetRadius = (State.charge / 100) * 5;
-
-                status.innerText = `CHARGE: ${Math.floor(State.charge)}%`;
-                status.style.color = (State.charge > 10) ? "#f5a623" : "#00ff88";
-                status.style.borderColor = (State.charge > 10) ? "#f5a623" : "#00ff88";
-
-            } else {
-                fDot.style.display = 'none'; wDot.style.display = 'none';
-                lastAng = null;
-                
-                // Decay Charge if hand lost
-                State.charge *= 0.9;
-                State.targetRadius = (State.charge / 100) * 5;
-                
-                status.innerText = "NO HAND DETECTED";
-                status.style.color = "#555";
-                status.style.borderColor = "#555";
+            } catch (e) {
+                statusLog.innerText = "ERROR: " + e.message;
+                alert("Failed to load. Refresh and try a different server.");
             }
         }
 
-        window.onresize = () => {
-            camera.aspect = window.innerWidth/window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        function onResults(results) {
+            // If we get here, AI is working!
+            
+            if (results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                const tip = lm[8]; // Index Finger
+
+                // Show Dot
+                dot.style.display = 'block';
+                
+                // Map coordinates
+                const x = (1 - tip.x) * window.innerWidth;
+                const y = tip.y * window.innerHeight;
+
+                dot.style.left = x + "px";
+                dot.style.top = y + "px";
+
+                statusLog.innerText = "SYSTEM ONLINE - TRACKING ACTIVE";
+                statusLog.style.color = "#00ff88";
+            } else {
+                dot.style.display = 'none';
+                statusLog.innerText = "NO HAND DETECTED";
+                statusLog.style.color = "yellow";
+            }
         }
     </script>
 </body>
