@@ -1,298 +1,338 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0">
-    <title>魔法传送门(多线路版)</title>
+    <title>Doctor Strange Portal (Global)</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
-        #input-video { position: absolute; opacity: 0; pointer-events: none; z-index: -1; transform: scaleX(-1); }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: 'Segoe UI', Helvetica, sans-serif; }
         
-        /* 加载层 & 线路选择器 */
-        #loading-screen {
+        /* 视频层：镜像翻转，隐藏 */
+        #input-video { 
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+            opacity: 0; pointer-events: none; z-index: -1; 
+            transform: scaleX(-1);
+        }
+        
+        /* 电影级 UI */
+        #hud {
+            position: absolute; bottom: 60px; width: 100%; text-align: center; pointer-events: none; z-index: 10;
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
+        }
+        .title {
+            color: #f5a623; font-size: 28px; font-weight: 700; letter-spacing: 3px;
+            text-shadow: 0 0 20px rgba(245, 166, 35, 0.6);
+            font-family: serif; text-transform: uppercase;
+        }
+        .status-pill {
+            color: rgba(255,255,255,0.9); font-size: 14px;
+            background: rgba(20, 20, 20, 0.8); padding: 8px 24px; border-radius: 30px;
+            border: 1px solid rgba(245, 166, 35, 0.3);
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+        }
+        
+        /* 中心能量环 UI */
+        #energy-ui {
+            position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 240px; height: 240px; pointer-events: none; opacity: 0.8; z-index: 5;
+        }
+        
+        /* 加载页 */
+        #loader {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 200;
+            background: #000; z-index: 100;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity 0.5s;
         }
-        .spinner { width: 50px; height: 50px; border: 3px solid #333; border-top: 3px solid #f5a623; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        .spinner {
+            width: 50px; height: 50px; border: 3px solid #333; 
+            border-top: 3px solid #f5a623; border-radius: 50%; 
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        .loader-text { color: #f5a623; font-size: 14px; letter-spacing: 1px; }
+        .loader-sub { color: #555; font-size: 12px; margin-top: 8px; font-family: monospace; }
+
         @keyframes spin { 100% { transform: rotate(360deg); } }
-        
-        .loading-text { color: #f5a623; font-size: 18px; font-weight: bold; margin-bottom: 5px; }
-        .sub-text { color: #666; font-size: 12px; margin-bottom: 30px; }
-        
-        /* 线路按钮 */
-        .line-selector { display: flex; flex-direction: column; gap: 10px; width: 80%; max-width: 300px; }
-        .line-btn {
-            background: #222; border: 1px solid #444; color: #ccc;
-            padding: 12px; border-radius: 8px; font-size: 14px;
-            cursor: pointer; transition: all 0.2s;
-            display: flex; justify-content: space-between;
-        }
-        .line-btn:active { background: #444; }
-        .line-btn.active { border-color: #f5a623; color: #f5a623; background: rgba(245, 166, 35, 0.1); }
-        .line-tag { font-size: 10px; background: #444; padding: 2px 6px; border-radius: 4px; }
-
-        /* HUD */
-        #hud { position: absolute; bottom: 50px; width: 100%; text-align: center; z-index: 10; pointer-events: none; display: none; }
-        .title { color: #f5a623; font-size: 24px; font-weight: bold; text-shadow: 0 0 10px rgba(245, 166, 35, 0.8); margin-bottom: 10px; }
-        .status { color: #ddd; background: rgba(0,0,0,0.6); padding: 8px 20px; border-radius: 20px; display: inline-block; font-size: 16px; border: 1px solid rgba(255,255,255,0.1); }
-
-        #energy-container { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 200px; height: 200px; pointer-events: none; opacity: 0.8; z-index: 5; display: none; }
-        
-        #log-area { position: absolute; bottom: 10px; color: #444; font-size: 10px; font-family: monospace; }
     </style>
 </head>
 <body>
 
     <video id="input-video" playsinline webkit-playsinline></video>
     
-    <div id="loading-screen">
+    <div id="loader">
         <div class="spinner"></div>
-        <div class="loading-text">正在初始化...</div>
-        <div class="sub-text" id="status-msg">若卡住超过10秒，请点击下方切换线路</div>
-        
-        <div class="line-selector">
-            <button class="line-btn" onclick="switchLine('eleme')">
-                <span>⚡ 线路1: 饿了么CDN</span> <span class="line-tag">国内推荐</span>
-            </button>
-            <button class="line-btn" onclick="switchLine('unpkg')">
-                <span>🐢 线路2: Unpkg</span> <span class="line-tag">慢但稳</span>
-            </button>
-            <button class="line-btn" onclick="switchLine('jsdelivr')">
-                <span>🌐 线路3: jsDelivr</span> <span class="line-tag">备用</span>
-            </button>
-        </div>
-        <div id="log-area">等待选择...</div>
+        <div class="loader-text">ACCESSING MULTIVERSE</div>
+        <div class="loader-sub" id="log-text">Connecting to global servers...</div>
     </div>
 
     <div id="hud">
-        <div class="title">SLING RING</div>
-        <div class="status" id="status-text">举起食指 顺时针画圈</div>
+        <div class="title">Sling Ring</div>
+        <div class="status-pill" id="status-text">System Initializing...</div>
     </div>
 
-    <div id="energy-container">
-        <svg width="200" height="200" viewBox="0 0 200 200">
-            <circle cx="100" cy="100" r="40" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="2" />
-            <circle id="ring" cx="100" cy="100" r="40" fill="none" stroke="#f5a623" stroke-width="4" stroke-dasharray="251" stroke-dashoffset="251" transform="rotate(-90 100 100)" stroke-linecap="round" />
+    <div id="energy-ui">
+        <svg width="240" height="240" viewBox="0 0 240 240">
+            <!-- 背景暗环 -->
+            <circle cx="120" cy="120" r="50" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="2" />
+            <!-- 进度亮环 -->
+            <circle id="progress-circle" cx="120" cy="120" r="50" fill="none" stroke="#f5a623" stroke-width="4" 
+                    stroke-dasharray="314" stroke-dashoffset="314" 
+                    transform="rotate(-90 120 120)" stroke-linecap="round" 
+                    style="transition: stroke-dashoffset 0.1s linear;"/>
         </svg>
     </div>
 
-    <!-- 基础 Three.js (比较小，通常没问题) -->
-    <script src="https://npm.elemecdn.com/three@0.128.0/build/three.min.js"></script>
-    
-    <!-- MediaPipe 动态加载器 -->
+    <!-- 
+      国际标准源 (Global Standard CDNs) 
+      需要 VPN 访问以保证稳定性
+    -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+
     <script>
-        // === 1. 线路配置 ===
-        const CDNS = {
-            'eleme': 'https://npm.elemecdn.com/@mediapipe/hands',
-            'unpkg': 'https://unpkg.com/@mediapipe/hands',
-            'jsdelivr': 'https://cdn.jsdelivr.net/npm/@mediapipe/hands'
-        };
-
-        // 默认使用饿了么，如果 URL 有参数则覆盖
-        const urlParams = new URLSearchParams(window.location.search);
-        const currentLine = urlParams.get('line') || 'eleme';
+        // 日志显示
+        const logEl = document.getElementById('log-text');
+        const statusEl = document.getElementById('status-text');
+        const loader = document.getElementById('loader');
         
-        // UI 更新
-        document.querySelectorAll('.line-btn').forEach(btn => {
-            if(btn.innerText.toLowerCase().includes(currentLine)) btn.classList.add('active');
-        });
-        
-        function log(msg) { document.getElementById('log-area').innerText = msg; console.log(msg); }
-        
-        // 切换线路函数
-        window.switchLine = function(lineName) {
-            log(`正在切换到 ${lineName}...`);
-            // 刷新页面并带上参数
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.set('line', lineName);
-            window.location.href = newUrl.toString();
+        function updateLog(msg) {
+            console.log(`[System] ${msg}`);
+            logEl.innerText = msg;
         }
 
-        // 动态加载脚本
-        function loadScript(url) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = url;
-                script.onload = resolve;
-                script.onerror = reject;
-                document.body.appendChild(script);
-            });
-        }
-
-        // === 2. 启动流程 ===
-        async function initApp() {
-            const baseUrl = CDNS[currentLine];
-            log(`正在从 [${currentLine}] 加载核心组件...`);
-            
-            try {
-                // 顺序加载依赖
-                await loadScript(`${baseUrl}/camera_utils.js`);
-                await loadScript(`${baseUrl}/control_utils.js`);
-                await loadScript(`${baseUrl}/hands.js`);
-                
-                log("组件加载完毕，启动 AI 引擎...");
-                startAI(baseUrl);
-                
-            } catch (e) {
-                log(`❌ 加载失败! 请尝试切换其他线路`);
-                document.getElementById('status-msg').innerText = "当前线路无法连接，请点击下方按钮切换";
-                document.getElementById('status-msg').style.color = "red";
-            }
-        }
-
-        // === 3. 业务逻辑 ===
-        function startAI(baseUrl) {
-            const video = document.getElementById('input-video');
-            const hands = new Hands({locateFile: (file) => {
-                log(`📥 请求: ${file}`);
-                return `${baseUrl}/${file}`;
-            }});
-
-            hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
-
-            let isLoaded = false;
-            hands.onResults(onResults);
-
-            const camera = new Camera(video, {
-                onFrame: async () => await hands.send({image: video}),
-                width: 640, height: 480, facingMode: 'user'
-            });
-
-            camera.start()
-                .then(() => log("摄像头已开启，等待 AI 响应..."))
-                .catch(e => log("❌ 摄像头权限被拒绝！"));
-
-            // 结果处理
-            function onResults(results) {
-                if (!isLoaded) {
-                    isLoaded = true;
-                    document.getElementById('loading-screen').style.display = 'none';
-                    document.getElementById('hud').style.display = 'block';
-                    document.getElementById('energy-container').style.display = 'block';
-                }
-                updateGameLogic(results); // 调用下方的游戏逻辑
-            }
-        }
-
-        // 开始执行
-        initApp();
-
-        // ---------------------------------------------------------
-        // 游戏逻辑 (Three.js & Interaction)
-        // ---------------------------------------------------------
-        
-        // Three.js Setup
+        // --- 1. Three.js Visual Effects ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x000000, 0.02);
-        const cam3d = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
-        cam3d.position.z = 15;
-        const renderer = new THREE.WebGLRenderer({antialias:false});
+        scene.fog = new THREE.FogExp2(0x000000, 0.02); // 黑色迷雾
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 15;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" });
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
         document.body.appendChild(renderer.domElement);
 
-        // Texture
-        const cvs = document.createElement('canvas'); cvs.width=64; cvs.height=64;
-        const ctx = cvs.getContext('2d');
-        const gr = ctx.createRadialGradient(32,32,0,32,32,32);
-        gr.addColorStop(0,'white'); gr.addColorStop(0.2,'#ffc800'); gr.addColorStop(1,'transparent');
-        ctx.fillStyle=gr; ctx.fillRect(0,0,64,64);
-        const tex = new THREE.CanvasTexture(cvs);
+        // 生成程序化火花纹理 (Procedural Texture)
+        function createSpark() {
+            const cvs = document.createElement('canvas');
+            cvs.width = 64; cvs.height = 64;
+            const ctx = cvs.getContext('2d');
+            const g = ctx.createRadialGradient(32,32,0, 32,32,32);
+            g.addColorStop(0, '#ffffff');
+            g.addColorStop(0.2, '#ffcc00');
+            g.addColorStop(0.5, '#ff6600');
+            g.addColorStop(1, 'transparent');
+            ctx.fillStyle = g;
+            ctx.fillRect(0,0,64,64);
+            return new THREE.CanvasTexture(cvs);
+        }
 
-        // Particles
-        const count = 2500;
+        // 粒子系统配置
+        const P_COUNT = 3500;
         const geo = new THREE.BufferGeometry();
-        const pos = new Float32Array(count*3);
-        const spd = new Float32Array(count);
-        const ang = new Float32Array(count);
-        const rad = new Float32Array(count);
-        for(let i=0; i<count; i++) {
-            ang[i] = Math.random()*Math.PI*2;
-            rad[i] = (Math.random()-0.5)*1.5;
-            spd[i] = 2+Math.random()*3;
-            pos[i*3]=999;
-        }
-        geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
-        const mat = new THREE.PointsMaterial({size:0.4, map:tex, transparent:true, blending:THREE.AdditiveBlending, depthWrite:false});
-        const ring = new THREE.Points(geo, mat);
-        scene.add(ring);
-
-        const mirror = new THREE.Mesh(
-            new THREE.IcosahedronGeometry(1,2),
-            new THREE.MeshBasicMaterial({color:0x001133, wireframe:true, transparent:true, opacity:0})
-        );
-        scene.add(mirror);
-
-        let st = { r:0, tr:0, prog:0 };
-
-        function animate() {
-            requestAnimationFrame(animate);
-            st.r += (st.tr - st.r)*0.08;
-            mirror.scale.setScalar(st.r*0.9);
-            mirror.material.opacity = Math.min(1, st.r/3);
-            mirror.rotation.y+=0.01;
-            ring.rotation.z -= 0.03;
+        const pos = new Float32Array(P_COUNT * 3);
+        const data = new Float32Array(P_COUNT * 3); // x=speed, y=angle, z=radius_offset
+        
+        for(let i=0; i<P_COUNT; i++) {
+            pos[i*3] = 9999; pos[i*3+1] = 9999; pos[i*3+2] = 0; // 初始隐藏
             
-            const p = ring.geometry.attributes.position.array;
-            for(let i=0; i<count; i++) {
-                ang[i] += spd[i]*0.01;
-                const r = st.r + rad[i];
-                if(st.r > 0.1) {
-                    p[i*3] = Math.cos(ang[i])*r + (Math.random()-0.5)*0.15;
-                    p[i*3+1] = Math.sin(ang[i])*r + (Math.random()-0.5)*0.15;
-                    p[i*3+2] = (Math.random()-0.5);
-                } else { p[i*3]=999; }
-            }
-            ring.geometry.attributes.position.needsUpdate=true;
-            renderer.render(scene, cam3d);
-        }
-        animate();
-
-        // 交互逻辑
-        let lastAng = null;
-        let lossCount = 0;
-        const uiRing = document.getElementById('ring');
-        const uiText = document.getElementById('status-text');
-
-        function updateGameLogic(results) {
-            if(results.multiHandLandmarks.length > 0) {
-                lossCount = 0;
-                const lm = results.multiHandLandmarks[0];
-                const tip = lm[8];
-                const curAng = Math.atan2(tip.y-0.5, tip.x-0.5);
-                
-                if(lastAng !== null) {
-                    let d = curAng - lastAng;
-                    if(d > Math.PI) d -= Math.PI*2;
-                    if(d < -Math.PI) d += Math.PI*2;
-                    if(Math.abs(d) < 0.5) st.prog += d * 2.5;
-                }
-                lastAng = curAng;
-                st.prog = Math.max(0, Math.min(st.prog, Math.PI*4));
-                const ratio = st.prog / (Math.PI*4);
-                st.tr = ratio * 6;
-                uiRing.style.strokeDashoffset = 251 - (251*ratio);
-                
-                if(ratio>0.8) { uiText.innerText="传送门开启"; uiText.style.color="#0f8"; }
-                else if(ratio>0.1) { uiText.innerText=`能量 ${(ratio*100).toFixed(0)}%`; uiText.style.color="#f80"; }
-                else { uiText.innerText="请顺时针画圈"; uiText.style.color="#fff"; }
-            } else {
-                lossCount++;
-                if(lossCount > 15) {
-                    lastAng = null;
-                    st.tr = 0;
-                    st.prog *= 0.95;
-                    uiText.innerText="信号丢失"; uiText.style.color="#555";
-                }
-            }
+            data[i*3] = 2 + Math.random() * 4;       // Speed
+            data[i*3+1] = Math.random() * Math.PI * 2; // Start Angle
+            data[i*3+2] = (Math.random() - 0.5) * 1.5; // Radius jitter
         }
         
-        window.onresize = () => {
-            cam3d.aspect = window.innerWidth/window.innerHeight;
-            cam3d.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        geo.setAttribute('particleData', new THREE.BufferAttribute(data, 3));
+
+        const mat = new THREE.PointsMaterial({
+            size: 0.35,
+            map: createSpark(),
+            transparent: true,
+            blending: THREE.AdditiveBlending, // 发光叠加模式
+            depthWrite: false
+        });
+
+        const portalParticles = new THREE.Points(geo, mat);
+        scene.add(portalParticles);
+
+        // 镜像空间 (内部黑洞)
+        const voidGeo = new THREE.IcosahedronGeometry(1, 1);
+        const voidMat = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true, transparent:true, opacity:0 });
+        const voidMesh = new THREE.Mesh(voidGeo, voidMat);
+        scene.add(voidMesh);
+
+        // 动画状态机
+        const State = {
+            radius: 0,
+            targetRadius: 0,
+            charge: 0 // 0.0 to 1.0
         };
+
+        function renderLoop() {
+            requestAnimationFrame(renderLoop);
+            
+            // 物理平滑
+            State.radius += (State.targetRadius - State.radius) * 0.1;
+            
+            // 传送门自旋
+            portalParticles.rotation.z -= 0.05;
+            voidMesh.rotation.y += 0.01;
+            voidMesh.scale.setScalar(State.radius * 0.8);
+            voidMesh.material.opacity = Math.min(1, State.radius / 3);
+
+            // 更新粒子位置
+            const positions = portalParticles.geometry.attributes.position.array;
+            const pData = portalParticles.geometry.attributes.particleData.array;
+
+            for(let i=0; i<P_COUNT; i++) {
+                const idx = i*3;
+                // 更新角度
+                pData[idx+1] += pData[idx] * 0.01; // angle += speed
+                
+                const angle = pData[idx+1];
+                const rBase = State.radius + pData[idx+2]; // base + jitter
+                
+                if (State.radius > 0.1) {
+                    // 极坐标转笛卡尔坐标 + 随机噪点(火花飞溅)
+                    positions[idx] = Math.cos(angle) * rBase + (Math.random()-0.5)*0.2;
+                    positions[idx+1] = Math.sin(angle) * rBase + (Math.random()-0.5)*0.2;
+                    positions[idx+2] = (Math.random()-0.5) * 0.5;
+                } else {
+                    positions[idx] = 9999;
+                }
+            }
+            
+            portalParticles.geometry.attributes.position.needsUpdate = true;
+            renderer.render(scene, camera);
+        }
+        renderLoop();
+
+        // --- 2. AI Logic (Standard Source) ---
+        updateLog("Loading AI Model (Standard CDN)...");
+
+        const videoEl = document.getElementById('input-video');
+        const uiRing = document.getElementById('progress-circle');
+        
+        let lastAngle = null;
+        let debounceTimer = null;
+
+        // 计算角度 (-PI ~ PI)
+        function calculateAngle(x, y) {
+            return Math.atan2(y - 0.5, x - 0.5);
+        }
+
+        // 标准源配置
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1, // 1 = Full (更精准), 0 = Lite (更快)
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        let isReady = false;
+
+        hands.onResults(results => {
+            if(!isReady) {
+                isReady = true;
+                loader.style.opacity = '0';
+                setTimeout(() => loader.style.display = 'none', 500);
+            }
+
+            if (results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0];
+                const tip = lm[8]; // Index Finger Tip
+                
+                const angle = calculateAngle(tip.x, tip.y);
+                
+                if (lastAngle !== null) {
+                    let delta = angle - lastAngle;
+                    // 处理角度跳变 (如从 3.14 跳到 -3.14)
+                    if (delta > Math.PI) delta -= Math.PI * 2;
+                    if (delta < -Math.PI) delta += Math.PI * 2;
+                    
+                    // 顺时针为正 (在屏幕坐标系中)
+                    // 过滤微小抖动
+                    if (Math.abs(delta) > 0.05 && Math.abs(delta) < 1.0) {
+                        State.charge += delta * 0.5; // 灵敏度系数
+                    }
+                }
+                lastAngle = angle;
+                
+                // 限制电量 [0, 6.28] (一整圈满能量)
+                State.charge = Math.max(0, Math.min(State.charge, Math.PI * 2));
+                
+                // 状态映射
+                const ratio = State.charge / (Math.PI * 2); // 0.0 ~ 1.0
+                State.targetRadius = ratio * 6; // 最大半径 6
+                
+                // UI 更新
+                // 314 是圆周长 (2 * PI * 50)
+                uiRing.style.strokeDashoffset = 314 - (314 * ratio);
+                
+                // 文字反馈
+                if (ratio > 0.95) {
+                    statusEl.innerText = "PORTAL OPENED";
+                    statusEl.style.color = "#00ff88";
+                    statusEl.style.borderColor = "#00ff88";
+                } else if (ratio > 0.1) {
+                    statusEl.innerText = `CHARGING... ${(ratio*100).toFixed(0)}%`;
+                    statusEl.style.color = "#f5a623";
+                    statusEl.style.borderColor = "rgba(245, 166, 35, 0.5)";
+                } else {
+                    statusEl.innerText = "ROTATE CLOCKWISE";
+                    statusEl.style.color = "#fff";
+                    statusEl.style.borderColor = "rgba(255,255,255,0.2)";
+                }
+                
+                // 重置丢失计时器
+                if(debounceTimer) clearTimeout(debounceTimer);
+
+            } else {
+                // 信号丢失处理 (防抖 200ms)
+                if (!debounceTimer) {
+                    debounceTimer = setTimeout(() => {
+                        lastAngle = null;
+                        State.targetRadius = 0;
+                        State.charge *= 0.9; // 慢慢掉电
+                        statusEl.innerText = "SIGNAL LOST";
+                        statusEl.style.color = "#555";
+                        statusEl.style.borderColor = "#333";
+                        debounceTimer = null;
+                    }, 200);
+                }
+            }
+        });
+
+        // 启动摄像头
+        const camera = new Camera(videoEl, {
+            onFrame: async () => {
+                await hands.send({image: videoEl});
+            },
+            width: 640, height: 480, facingMode: 'user'
+        });
+        
+        updateLog("Requesting Camera Access...");
+        camera.start()
+            .then(() => updateLog("Downloading Neural Network (VPN Required)..."))
+            .catch(e => {
+                updateLog("Error: Camera Denied or Network Error");
+                alert("无法启动：请检查摄像头权限或网络连接。");
+            });
+
+        // 窗口适配
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
     </script>
 </body>
 </html>
