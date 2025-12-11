@@ -1,491 +1,343 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D 手势交互粒子系统</title>
+    <title>Doctor Strange Portal AR</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #050505; font-family: 'Segoe UI', sans-serif; }
-        canvas { display: block; }
-        
-        /* UI 面板 - 玻璃拟态 */
-        #ui-panel {
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+        }
+        /* This hides the raw video element, we only want the 3D canvas */
+        .input_video {
+            display: none;
+        }
+        /* The canvas sits on top */
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        #loading {
             position: absolute;
-            top: 20px;
-            left: 20px;
-            width: 260px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border-radius: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             color: white;
-            z-index: 100;
-            transition: transform 0.3s;
-        }
-
-        h2 { margin: 0 0 15px 0; font-size: 18px; font-weight: 600; letter-spacing: 1px; }
-        
-        .control-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 8px; font-size: 12px; opacity: 0.8; }
-
-        /* 按钮样式 */
-        .shape-btn {
-            background: rgba(255, 255, 255, 0.15);
-            border: none;
-            color: white;
-            padding: 8px 12px;
-            margin: 4px;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 12px;
-        }
-        .shape-btn:hover, .shape-btn.active {
-            background: #00d2ff;
-            box-shadow: 0 0 10px #00d2ff;
-        }
-
-        /* 颜色选择器 */
-        input[type="color"] {
-            width: 100%;
-            height: 30px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            background: none;
-        }
-
-        /* 状态指示 */
-        #status {
-            position: absolute;
-            bottom: 20px;
-            left: 20px;
-            color: rgba(255, 255, 255, 0.5);
-            font-size: 12px;
+            font-family: sans-serif;
+            font-size: 24px;
             pointer-events: none;
         }
-
-        /* 全屏按钮 */
-        #fullscreen-btn {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: white;
-            padding: 10px;
-            border-radius: 50%;
-            cursor: pointer;
-            z-index: 100;
-        }
-        #fullscreen-btn:hover { background: rgba(255, 255, 255, 0.3); }
-
-        /* 隐藏视频元素，我们只需要数据 */
-        #video-input { display: none; }
-        
-        /* 加载动画 */
-        #loader {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            color: #00d2ff;
-            font-size: 24px;
-            font-weight: bold;
-            z-index: 200;
-            text-align: center;
-        }
     </style>
+    
+    <!-- Import Maps: This tells the browser where to get the libraries -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "@mediapipe/hands": "https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js",
+                "@mediapipe/camera_utils": "https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+            }
+        }
+    </script>
 </head>
 <body>
 
-    <div id="loader">正在启动摄像头与AI模型...<br><span style="font-size:14px; color:white; font-weight:normal">首次加载可能需要几秒钟</span></div>
+    <div id="loading">Loading Magic... (Allow Camera Access)</div>
+    <video class="input_video"></video>
 
-    <!-- 隐藏的视频源 -->
-    <video id="video-input"></video>
+    <script type="module">
+        import * as THREE from 'three';
+        // We import MediaPipe libraries dynamically to ensure they load correctly in the browser
+        const { Hands } = window; 
+        const { Camera } = window;
 
-    <!-- UI 面板 -->
-    <div id="ui-panel">
-        <h2>交互粒子系统</h2>
+        // ==========================================
+        // 1. SETUP THREE.JS (The Graphics Engine)
+        // ==========================================
+        const scene = new THREE.Scene();
         
-        <div class="control-group">
-            <label>模型选择</label>
-            <div id="shape-buttons">
-                <button class="shape-btn active" data-shape="heart">爱心</button>
-                <button class="shape-btn" data-shape="saturn">土星</button>
-                <button class="shape-btn" data-shape="flower">花朵</button>
-                <button class="shape-btn" data-shape="buddha">静坐(拟)</button>
-                <button class="shape-btn" data-shape="fireworks">烟花</button>
-            </div>
-        </div>
+        // Perspective Camera
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.z = 5;
 
-        <div class="control-group">
-            <label>粒子颜色</label>
-            <input type="color" id="color-picker" value="#00d2ff">
-        </div>
-        
-        <div class="control-group">
-            <label>手势状态: <span id="gesture-state" style="color:#00d2ff">未检测到</span></label>
-            <div style="font-size: 10px; opacity: 0.6; margin-top:5px;">
-                提示：双手举起，拉开距离控制扩散
-            </div>
-        </div>
-    </div>
+        // Renderer (Alpha: true allows us to see the webcam behind the 3D)
+        const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        document.body.appendChild(renderer.domElement);
 
-    <button id="fullscreen-btn">⛶</button>
-    <div id="status">Three.js r128 | MediaPipe Hands</div>
-
-    <!-- 引入库文件 -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-
-    <script>
-        // --- 全局变量配置 ---
-        const PARTICLE_COUNT = 15000;
-        const PARTICLE_SIZE = 0.08;
-        let scene, camera, renderer, particles, geometry;
-        let initialPositions = []; // 存储当前形状的目标位置
-        let currentPositions = []; // 存储实时位置
-        let targetShape = 'heart';
-        let handInteractionScale = 1.0; // 手势控制的缩放因子
-        let handDistance = 0;
-        
-        // --- 1. Three.js 场景初始化 ---
-        function initScene() {
-            scene = new THREE.Scene();
-            // 添加一些环境雾气
-            scene.fog = new THREE.FogExp2(0x050505, 0.02);
-
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.z = 8;
-
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            document.body.appendChild(renderer.domElement);
-
-            // 创建粒子材质
-            // 使用 Canvas 生成一个圆形的纹理，比加载图片更快
-            const getTexture = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = 32;
-                canvas.height = 32;
-                const ctx = canvas.getContext('2d');
-                const grad = ctx.createRadialGradient(16, 16, 0, 16, 16, 16);
-                grad.addColorStop(0, 'rgba(255,255,255,1)');
-                grad.addColorStop(1, 'rgba(255,255,255,0)');
-                ctx.fillStyle = grad;
-                ctx.fillRect(0, 0, 32, 32);
-                const texture = new THREE.Texture(canvas);
-                texture.needsUpdate = true;
-                return texture;
-            };
-
-            const material = new THREE.PointsMaterial({
-                size: PARTICLE_SIZE,
-                map: getTexture(),
-                transparent: true,
-                opacity: 0.8,
-                vertexColors: false,
-                color: new THREE.Color(0x00d2ff),
-                blending: THREE.AdditiveBlending,
-                depthWrite: false
-            });
-
-            // 初始化粒子几何体
-            geometry = new THREE.BufferGeometry();
-            const posArray = new Float32Array(PARTICLE_COUNT * 3);
-            
-            // 初始状态设为随机分布
-            for(let i = 0; i < PARTICLE_COUNT * 3; i++) {
-                posArray[i] = (Math.random() - 0.5) * 10;
-                currentPositions[i] = posArray[i];
-            }
-
-            geometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
-            particles = new THREE.Points(geometry, material);
-            scene.add(particles);
-
-            // 生成初始形状数据
-            updateShapeData('heart');
-
-            window.addEventListener('resize', onWindowResize, false);
-            animate();
-        }
-
-        // --- 2. 形状生成数学逻辑 ---
-        function getShapePositions(type) {
-            const positions = [];
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                let x, y, z;
-                
-                if (type === 'heart') {
-                    // 爱心方程
-                    const t = Math.random() * Math.PI * 2;
-                    const r = Math.sqrt(Math.random()); // 填充内部
-                    // 3D Heart Approximation
-                    const phi = Math.random() * Math.PI * 2;
-                    const theta = Math.random() * Math.PI;
-                    
-                    // 2D Extruded Heart
-                    const hx = 16 * Math.pow(Math.sin(t), 3);
-                    const hy = 13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t);
-                    
-                    // Add thickness
-                    x = (hx * 0.15) * r;
-                    y = (hy * 0.15) * r;
-                    z = (Math.random() - 0.5) * 2 * r; 
-
-                } else if (type === 'saturn') {
-                    const rnd = Math.random();
-                    if (rnd < 0.6) {
-                        // Planet Body (Sphere)
-                        const radius = 2;
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos(2 * Math.random() - 1);
-                        const r = radius * Math.cbrt(Math.random()); 
-                        x = r * Math.sin(phi) * Math.cos(theta);
-                        y = r * Math.sin(phi) * Math.sin(theta);
-                        z = r * Math.cos(phi);
-                    } else {
-                        // Rings (Disc)
-                        const angle = Math.random() * Math.PI * 2;
-                        const radius = 3 + Math.random() * 2; // Ring radius 3 to 5
-                        x = Math.cos(angle) * radius;
-                        z = Math.sin(angle) * radius;
-                        y = (Math.random() - 0.5) * 0.1; // Thin flatness
-                        
-                        // Tilt the ring
-                        const tilt = 0.4;
-                        const tempY = y * Math.cos(tilt) - z * Math.sin(tilt);
-                        const tempZ = y * Math.sin(tilt) + z * Math.cos(tilt);
-                        y = tempY;
-                        z = tempZ;
-                    }
-
-                } else if (type === 'flower') {
-                    // Polar Rose
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.random() * Math.PI;
-                    const k = 4; // Petals
-                    const r = 2 + Math.cos(k * theta) * Math.sin(phi);
-                    const dist = r * Math.random(); // Fill
-                    
-                    x = dist * Math.sin(phi) * Math.cos(theta);
-                    y = dist * Math.sin(phi) * Math.sin(theta);
-                    z = (Math.random() - 0.5) * 0.5; // Flat flower
-
-                } else if (type === 'buddha') {
-                    // Procedural "Meditating Figure" (Stack of spheres approximation)
-                    const rnd = Math.random();
-                    
-                    if (rnd < 0.5) {
-                        // Base/Legs (Flat Ellipsoid)
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos(2 * Math.random() - 1);
-                        const r = 2.5 * Math.cbrt(Math.random());
-                        x = r * Math.sin(phi) * Math.cos(theta);
-                        y = (r * Math.sin(phi) * Math.sin(theta) * 0.5) - 1.5; // Flatten Y, Move down
-                        z = r * Math.cos(phi) * 0.8;
-                    } else if (rnd < 0.85) {
-                        // Body (Sphere)
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos(2 * Math.random() - 1);
-                        const r = 1.2 * Math.cbrt(Math.random());
-                        x = r * Math.sin(phi) * Math.cos(theta);
-                        y = (r * Math.sin(phi) * Math.sin(theta)) + 0.2; // Center
-                        z = r * Math.cos(phi);
-                    } else {
-                        // Head (Small Sphere)
-                        const theta = Math.random() * Math.PI * 2;
-                        const phi = Math.acos(2 * Math.random() - 1);
-                        const r = 0.7 * Math.cbrt(Math.random());
-                        x = r * Math.sin(phi) * Math.cos(theta);
-                        y = (r * Math.sin(phi) * Math.sin(theta)) + 1.8; // Move up
-                        z = r * Math.cos(phi);
-                    }
-
-                } else if (type === 'fireworks') {
-                    // Explosion sphere (hollow)
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos(2 * Math.random() - 1);
-                    const r = 3 + (Math.random() * 2); // Varying radius for trails
-                    x = r * Math.sin(phi) * Math.cos(theta);
-                    y = r * Math.sin(phi) * Math.sin(theta);
-                    z = r * Math.cos(phi);
-                } else {
-                    x = 0; y = 0; z = 0;
-                }
-
-                positions.push(x, y, z);
-            }
-            return positions;
-        }
-
-        function updateShapeData(shape) {
-            targetShape = shape;
-            initialPositions = getShapePositions(shape);
-        }
-
-        // --- 3. 动画与渲染循环 ---
-        let time = 0;
-        function animate() {
-            requestAnimationFrame(animate);
-            time += 0.01;
-
-            const positions = particles.geometry.attributes.position.array;
-            
-            // 核心动画逻辑：插值移动粒子到目标位置
-            for (let i = 0; i < PARTICLE_COUNT; i++) {
-                const ix = i * 3;
-                const iy = i * 3 + 1;
-                const iz = i * 3 + 2;
-
-                // 目标位置
-                let tx = initialPositions[ix];
-                let ty = initialPositions[iy];
-                let tz = initialPositions[iz];
-
-                // 如果是烟花，加点旋转和随机抖动
-                if (targetShape === 'fireworks') {
-                     // 简单的闪烁/微动
-                     tx += Math.sin(time * 5 + i) * 0.05;
-                }
-
-                // 应用手势缩放因子 (Hand Scale)
-                // 如果没有检测到手，scale 默认为 1
-                const scale = Math.max(0.1, handInteractionScale);
-                
-                // 平滑插值 (Lerp)
-                // 当前位置趋向于 (目标位置 * 缩放)
-                positions[ix] += (tx * scale - positions[ix]) * 0.08;
-                positions[iy] += (ty * scale - positions[iy]) * 0.08;
-                positions[iz] += (tz * scale - positions[iz]) * 0.08;
-
-                // 整体缓慢自转
-                const oldX = positions[ix];
-                const oldZ = positions[iz];
-                const rotateSpeed = 0.002;
-                positions[ix] = oldX * Math.cos(rotateSpeed) - oldZ * Math.sin(rotateSpeed);
-                positions[iz] = oldX * Math.sin(rotateSpeed) + oldZ * Math.cos(rotateSpeed);
-            }
-
-            particles.geometry.attributes.position.needsUpdate = true;
-            renderer.render(scene, camera);
-        }
-
-        function onWindowResize() {
+        // Resize handler
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
-
-        // --- 4. MediaPipe 手势识别逻辑 ---
-        function onResults(results) {
-            const gestureState = document.getElementById('gesture-state');
-            document.getElementById('loader').style.display = 'none'; // 隐藏加载中
-
-            if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
-                // 检测到两只手
-                gestureState.innerText = "双手控制中";
-                gestureState.style.color = "#00ff00";
-
-                const hand1 = results.multiHandLandmarks[0];
-                const hand2 = results.multiHandLandmarks[1];
-
-                // 使用手腕(索引0)或食指根部(索引5)计算距离
-                const p1 = hand1[5]; 
-                const p2 = hand2[5];
-
-                // 计算简单的欧几里得距离 (仅X和Y，因为Z深度在网络摄像头中不太准)
-                const dist = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-                
-                // 将距离映射到缩放因子
-                // 通常双手距离在 0.1 到 0.8 之间
-                // 映射目标：0.5 (缩小) 到 2.5 (放大)
-                const minInput = 0.1;
-                const maxInput = 0.6;
-                const minOutput = 0.5;
-                const maxOutput = 2.5;
-
-                // 简单的线性映射
-                let scale = minOutput + ((dist - minInput) / (maxInput - minInput)) * (maxOutput - minOutput);
-                
-                // 限制范围并平滑处理
-                if(scale < 0.2) scale = 0.2;
-                if(scale > 4.0) scale = 4.0;
-
-                // 简单的阻尼效果
-                handInteractionScale += (scale - handInteractionScale) * 0.1;
-
-            } else if (results.multiHandLandmarks && results.multiHandLandmarks.length === 1) {
-                gestureState.innerText = "请使用双手";
-                gestureState.style.color = "yellow";
-                // 单手时缓慢恢复默认
-                handInteractionScale += (1.0 - handInteractionScale) * 0.05;
-            } else {
-                gestureState.innerText = "未检测到手势";
-                gestureState.style.color = "#00d2ff";
-                // 无手时恢复默认
-                handInteractionScale += (1.0 - handInteractionScale) * 0.05;
-            }
-        }
-
-        // 初始化 MediaPipe
-        const hands = new Hands({locateFile: (file) => {
-            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-        }});
-
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 1,
-            minDetectionConfidence: 0.5,
-            minTrackingConfidence: 0.5
         });
 
-        hands.onResults(onResults);
+        // ==========================================
+        // 2. CREATE THE PORTAL SHADERS (The Magic)
+        // ==========================================
+        
+        // Vertex Shader: Controls movement (Spinning and sparking)
+        const vertexShader = `
+            uniform float uTime;
+            uniform float uSize;
+            attribute float aScale;
+            attribute float aSpeed;
+            attribute vec3 aRandomness;
+            
+            varying vec2 vUv;
+            varying float vScale;
 
-        const videoElement = document.getElementById('video-input');
-        const cameraUtils = new Camera(videoElement, {
-            onFrame: async () => {
-                await hands.send({image: videoElement});
+            void main() {
+                vUv = uv;
+                vScale = aScale;
+
+                vec3 transformed = position;
+
+                // 1. Calculate Rotation based on time and speed
+                // The outer particles move faster than inner ones to create tearing effect
+                float angle = uTime * aSpeed * 1.5;
+                
+                // 2. Apply Rotation Matrix (Z-axis spin)
+                float c = cos(angle);
+                float s = sin(angle);
+                float x = transformed.x;
+                float y = transformed.y;
+                
+                transformed.x = x * c - y * s;
+                transformed.y = x * s + y * c;
+
+                // 3. Add noise/shaking to simulate sparks
+                transformed += aRandomness * sin(uTime * 10.0) * 0.05;
+
+                vec4 mvPosition = modelViewMatrix * vec4(transformed, 1.0);
+                
+                // 4. Size attenuation (particles get smaller when far away)
+                gl_PointSize = uSize * aScale * (100.0 / -mvPosition.z);
+                gl_Position = projectionMatrix * mvPosition;
+            }
+        `;
+
+        // Fragment Shader: Controls Color (Fire Gradient)
+        const fragmentShader = `
+            uniform vec3 uColorInner;
+            uniform vec3 uColorOuter;
+            
+            varying float vScale;
+
+            void main() {
+                // Calculate distance from center of the particle (0.0 to 0.5)
+                float d = distance(gl_PointCoord, vec2(0.5));
+                
+                // Create a soft glow circle
+                if (d > 0.5) discard; // Cut off corners of the square point
+                
+                float glow = 0.05 / (d - 0.05); // Inverse square law for glow
+                glow = pow(glow, 2.0); // Sharpen it
+
+                // Mix colors based on distance from center
+                vec3 finalColor = mix(uColorOuter, uColorInner, d * 2.0);
+
+                // Add transparency at edges
+                float alpha = 1.0 - smoothstep(0.4, 0.5, d);
+
+                gl_FragColor = vec4(finalColor, alpha * vScale);
+            }
+        `;
+
+        // ==========================================
+        // 3. BUILD THE PORTAL GEOMETRY
+        // ==========================================
+        const particlesGeometry = new THREE.BufferGeometry();
+        const count = 4000; // 4000 sparks
+        
+        const positions = new Float32Array(count * 3);
+        const scales = new Float32Array(count);
+        const speeds = new Float32Array(count);
+        const randomness = new Float32Array(count * 3);
+
+        for (let i = 0; i < count; i++) {
+            const i3 = i * 3;
+            
+            // Create a Ring Shape
+            // We use polar coordinates (radius & angle) then convert to X,Y
+            const radius = 1.8 + (Math.random() - 0.5) * 0.6; // Base radius 1.8 with variation
+            const angle = Math.random() * Math.PI * 2;
+
+            positions[i3] = Math.cos(angle) * radius;     // X
+            positions[i3 + 1] = Math.sin(angle) * radius; // Y
+            positions[i3 + 2] = (Math.random() - 0.5) * 0.5; // Z (Depth thickness)
+
+            scales[i] = Math.random();
+            speeds[i] = 1.0 + Math.random(); // Varied rotation speeds
+            
+            // Random jitter vector
+            randomness[i3] = Math.random() - 0.5;
+            randomness[i3 + 1] = Math.random() - 0.5;
+            randomness[i3 + 2] = Math.random() - 0.5;
+        }
+
+        particlesGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        particlesGeometry.setAttribute('aScale', new THREE.BufferAttribute(scales, 1));
+        particlesGeometry.setAttribute('aSpeed', new THREE.BufferAttribute(speeds, 1));
+        particlesGeometry.setAttribute('aRandomness', new THREE.BufferAttribute(randomness, 3));
+
+        // Create the Material
+        const particlesMaterial = new THREE.ShaderMaterial({
+            vertexShader: vertexShader,
+            fragmentShader: fragmentShader,
+            uniforms: {
+                uTime: { value: 0 },
+                uSize: { value: 150.0 },
+                uColorInner: { value: new THREE.Color('#ffddaa') }, // Bright Yellow
+                uColorOuter: { value: new THREE.Color('#ff4400') }  // Deep Orange/Red
             },
-            width: 640,
-            height: 480
+            transparent: true,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending // THIS MAKES IT GLOW
         });
-        cameraUtils.start();
 
-        // --- 5. UI 事件监听 ---
-        // 形状切换
-        document.querySelectorAll('.shape-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                document.querySelectorAll('.shape-btn').forEach(b => b.classList.remove('active'));
-                e.target.classList.add('active');
-                updateShapeData(e.target.dataset.shape);
+        const portal = new THREE.Points(particlesGeometry, particlesMaterial);
+        
+        // Initially hide the portal until hand is found
+        portal.visible = false; 
+        scene.add(portal);
+
+
+        // ==========================================
+        // 4. SETUP WEBCAM BACKGROUND
+        // ==========================================
+        // We create a simple plane behind the portal to show the video
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const videoTexture = new THREE.VideoTexture(videoElement);
+        const videoGeo = new THREE.PlaneGeometry(16, 9);
+        const videoMat = new THREE.MeshBasicMaterial({ map: videoTexture });
+        const videoMesh = new THREE.Mesh(videoGeo, videoMat);
+        
+        // Push it back so the portal is in front
+        videoMesh.position.z = -5; 
+        
+        // Scale it to cover the screen
+        const scaleFactor = Math.max(window.innerWidth / 16, window.innerHeight / 9) * 0.6; 
+        videoMesh.scale.set(scaleFactor, scaleFactor, 1);
+        
+        scene.add(videoMesh);
+
+
+        // ==========================================
+        // 5. MEDIAPIPE (HAND TRACKING)
+        // ==========================================
+        
+        // We need to load the scripts from CDN manually since we aren't using a bundler
+        // Helper function to load scripts sequentially
+        function loadScript(src) {
+            return new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = src;
+                s.onload = resolve;
+                s.onerror = reject;
+                document.head.appendChild(s);
             });
-        });
+        }
 
-        // 颜色切换
-        document.getElementById('color-picker').addEventListener('input', (e) => {
-            particles.material.color.set(e.target.value);
-        });
+        async function initMediaPipe() {
+            await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js');
+            await loadScript('https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js');
 
-        // 全屏切换
-        document.getElementById('fullscreen-btn').addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
+            const hands = new window.Hands({locateFile: (file) => {
+                return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+            }});
+
+            hands.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.7,
+                minTrackingConfidence: 0.7
+            });
+
+            hands.onResults(onResults);
+
+            const camera = new window.Camera(videoElement, {
+                onFrame: async () => {
+                    await hands.send({image: videoElement});
+                },
+                width: 1280,
+                height: 720
+            });
+            
+            camera.start();
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // Variable to smooth out the movement
+        const targetPosition = new THREE.Vector3();
+
+        function onResults(results) {
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                
+                // Landmark 8 is the tip of the Index Finger
+                const indexFinger = landmarks[8];
+                
+                // Convert 2D screen coordinates to 3D world coordinates
+                // MediaPipe x/y are 0.0 to 1.0
+                
+                // We map this to our camera view range (roughly -4 to 4 on X, -2 to 2 on Y at z=0)
+                const x = (indexFinger.x - 0.5) * -10.0; // Invert X for mirror effect
+                const y = -(indexFinger.y - 0.5) * 8.0;  // Invert Y because 3D Y goes up
+
+                targetPosition.set(x, y, 0);
+                
+                portal.visible = true;
             } else {
-                if (document.exitFullscreen) {
-                    document.exitFullscreen();
-                }
+                // Optional: Hide portal if no hand detected
+                // portal.visible = false; 
             }
-        });
+        }
 
-        // 启动场景
-        initScene();
+
+        // ==========================================
+        // 6. ANIMATION LOOP
+        // ==========================================
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const elapsedTime = clock.getElapsedTime();
+
+            // Update Shader Time
+            particlesMaterial.uniforms.uTime.value = elapsedTime;
+
+            // Smoothly move portal to hand position (Linear Interpolation)
+            portal.position.lerp(targetPosition, 0.1);
+
+            // Update Video Aspect Ratio (Responsive background)
+            if(videoElement.readyState === videoElement.HAVE_ENOUGH_DATA){
+                 const videoAspect = videoElement.videoWidth / videoElement.videoHeight;
+                 const screenAspect = window.innerWidth / window.innerHeight;
+                 
+                 // Simple logic to cover the screen
+                 if(screenAspect > videoAspect) {
+                     videoMesh.scale.set(screenAspect * 5, screenAspect * 5, 1);
+                 } else {
+                     videoMesh.scale.set(5, 5, 1);
+                 }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        // Start everything
+        initMediaPipe().then(() => {
+            animate();
+        }).catch(err => {
+            console.error("Error loading MediaPipe", err);
+            document.getElementById('loading').innerText = "Error loading. Check console.";
+        });
 
     </script>
 </body>
